@@ -6,10 +6,7 @@ from medical_toolkit.data import (
     RandomPatchSampler,
     Sample,
 )
-from medical_toolkit.transforms import (
-    MinMaxNormalize,
-    ZScoreNormalize,
-)
+from medical_toolkit.transforms import MinMaxNormalize, ZScoreNormalize
 
 
 def test_image_transform_runs_before_patch_transform(tmp_path) -> None:
@@ -66,9 +63,7 @@ def test_outside_center_keeps_patch_shape_with_constant_padding(tmp_path) -> Non
     np.save(image_path, np.ones((5, 5), dtype=np.float32))
     dataset = PatchDataset(
         [Sample(paths={"image": image_path})],
-        RandomPatchSampler(
-            (5, 5), seed=1, center_range=((1.0, 0.0), (0.0, 0.0))
-        ),
+        RandomPatchSampler((5, 5), seed=1, center_range=((1.0, 0.0), (0.0, 0.0))),
         spatial_dims=2,
         padding_mode="constant",
         padding_value=0,
