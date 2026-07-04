@@ -15,7 +15,6 @@ dist/
 .DS_Store
 .idea/
 .vscode/
-data/
 outputs/
 *.dcm
 *.nii
