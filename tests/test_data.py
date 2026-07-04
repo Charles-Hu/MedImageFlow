@@ -1,11 +1,11 @@
 import numpy as np
-
 from medical_toolkit.data import (
     GridPatchSampler,
     PatchDataset,
     RandomPatchSampler,
     Sample,
 )
+
 from medical_toolkit.transforms import MinMaxNormalize, ZScoreNormalize
 
 
