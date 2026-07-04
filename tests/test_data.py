@@ -6,7 +6,10 @@ from medical_toolkit.data import (
     RandomPatchSampler,
     Sample,
 )
-from medical_toolkit.transforms import MinMaxNormalize, ZScoreNormalize
+from medical_toolkit.transforms import (
+    MinMaxNormalize,
+    ZScoreNormalize,
+)
 
 
 def test_image_transform_runs_before_patch_transform(tmp_path) -> None:
