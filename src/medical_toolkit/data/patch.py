@@ -3,10 +3,10 @@
 from __future__ import annotations
 
 from collections.abc import Iterable, Sequence
+from collections.abc import Sequence as TypingSequence
 from dataclasses import dataclass
 from itertools import product
 from typing import Optional, Protocol, Union
-from typing import Sequence as TypingSequence
 
 import numpy as np
 from numpy.typing import NDArray
@@ -51,10 +51,11 @@ def normalize_patch_spec(value: PatchSize, spatial_dims: int) -> tuple[int | Non
     Raises:
         ValueError: If dimensionality is wrong or a numeric size is not positive.
     """
-    if value is None or isinstance(value, int):
-        result = (value,) * spatial_dims
-    else:
-        result = tuple(value)
+    result = (
+        (value,) * spatial_dims
+        if value is None or isinstance(value, int)
+        else tuple(value)
+    )
     if len(result) != spatial_dims:
         raise ValueError(f"patch_size must contain {spatial_dims} values, got {result}")
     if any(item is not None and item <= 0 for item in result):
@@ -91,7 +92,9 @@ def full_patch_axes(value: PatchSize, spatial_dims: int) -> tuple[int, ...]:
     )
 
 
-def spatial_axes(array: NDArray[object], spatial_dims: int, channel_axis: int | None) -> tuple[int, ...]:
+def spatial_axes(
+    array: NDArray[object], spatial_dims: int, channel_axis: int | None
+) -> tuple[int, ...]:
     """Resolve spatial axes for channel-free or single-channel-axis arrays.
 
     Args:
@@ -155,7 +158,9 @@ def normalize_center_range(
         pair = (float(raw[0]), float(raw[1]))  # type: ignore[arg-type]
         result = (pair,) * spatial_dims
     else:
-        result = tuple(tuple(float(number) for number in pair) for pair in raw)  # type: ignore[arg-type]
+        result = tuple(
+            tuple(float(number) for number in pair) for pair in raw
+        )  # type: ignore[arg-type]
     if len(result) != spatial_dims or any(len(pair) != 2 for pair in result):
         raise ValueError(
             f"center_range must be one pair or {spatial_dims} (before, after) pairs"
@@ -255,7 +260,10 @@ def extract_patch(
     """
     center = tuple(start + size // 2 for start, size in zip(location, patch_size))
     shape = get_spatial_shape(array, spatial_dims, channel_axis)
-    if any(start < 0 or start + size > bound for start, size, bound in zip(location, patch_size, shape)):
+    if any(
+        start < 0 or start + size > bound
+        for start, size, bound in zip(location, patch_size, shape)
+    ):
         raise ValueError(f"Patch at {location} with size {patch_size} exceeds shape {shape}")
     return extract_centered_patch(
         array,
@@ -340,7 +348,9 @@ class RandomPatchSampler:
         if center_mask is not None:
             mask = np.asarray(center_mask)
             if mask.shape != shape:
-                raise ValueError(f"center_mask shape {mask.shape} does not match image shape {shape}")
+                raise ValueError(
+                    f"center_mask shape {mask.shape} does not match image shape {shape}"
+                )
             if not np.all((mask == 0) | (mask == 1)):
                 raise ValueError("center_mask must be binary (only 0/False and 1/True)")
             if full_axes:
@@ -383,7 +393,10 @@ class RandomPatchSampler:
                 )
             if self.replacement:
                 centers = np.column_stack(
-                    [rng.integers(minimum, maximum + 1, size=count) for minimum, maximum in zip(lower, upper)]
+                    [
+                        rng.integers(minimum, maximum + 1, size=count)
+                        for minimum, maximum in zip(lower, upper)
+                    ]
                 )
             else:
                 flat_indices = rng.choice(candidate_count, size=count, replace=False)
