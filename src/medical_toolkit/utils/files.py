@@ -3,7 +3,12 @@ from __future__ import annotations
 from pathlib import Path
 
 
-def find_files(root: str | Path, pattern: str = "*.nii.gz", *, recursive: bool = True) -> list[Path]:
+def find_files(
+    root: str | Path,
+    pattern: str = "*.nii.gz",
+    *,
+    recursive: bool = True,
+) -> list[Path]:
     """Find files deterministically under a directory.
 
     Args:
