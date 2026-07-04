@@ -5,7 +5,8 @@ from __future__ import annotations
 from collections.abc import Iterable, Sequence
 from dataclasses import dataclass
 from itertools import product
-from typing import Optional, Protocol, Sequence as TypingSequence, Union
+from typing import Optional, Protocol, Union
+from typing import Sequence as TypingSequence
 
 import numpy as np
 from numpy.typing import NDArray
