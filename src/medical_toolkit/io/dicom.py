@@ -4,6 +4,9 @@ from __future__ import annotations
 
 from collections import defaultdict
 from pathlib import Path
+import shutil
+import subprocess
+import tempfile
 from typing import Any, Literal
 
 import numpy as np
@@ -12,15 +15,18 @@ from medical_toolkit.utils.optional import require
 
 
 ZSpacingSource = Literal["position", "slice_thickness"]
+DICOMConversionBackend = Literal["native", "dcm2niix"]
 
 
 def convert_dicom_to_nifti(
     directory: str | Path,
     *,
+    backend: DICOMConversionBackend = "native",
     series_uid: str | None = None,
     z_spacing: ZSpacingSource = "position",
     geometry_tolerance: float = 1e-4,
     spacing_tolerance: float = 1e-3,
+    dcm2niix_command: str | Path = "dcm2niix",
 ) -> tuple[Any, list[Any]]:
     """Convert one regular, single-frame DICOM series to a NIfTI image.
 
@@ -30,34 +36,105 @@ def convert_dicom_to_nifti(
 
     Args:
         directory: Directory searched recursively for DICOM instances.
+        backend: Conversion implementation. ``"native"`` uses the strict
+            pydicom implementation in this package; ``"dcm2niix"`` invokes
+            an installed dcm2niix executable.
         series_uid: ``SeriesInstanceUID`` to select. It is required when more
-            than one image series is present.
+            than one image series is present. Only supported by the native
+            backend.
         z_spacing: Use adjacent ``ImagePositionPatient`` values (recommended),
-            or use the DICOM ``SliceThickness`` value.
+            or use the DICOM ``SliceThickness`` value. Only supported by the
+            native backend.
         geometry_tolerance: Absolute tolerance for direction cosines and
             in-plane slice displacement, in patient-coordinate units.
         spacing_tolerance: Relative tolerance used to detect irregular slice
             spacing.
+        dcm2niix_command: Executable name or path used by the dcm2niix backend.
 
     Returns:
-        A ``(nibabel.Nifti1Image, datasets)`` tuple. The datasets are ordered
-        along the third NIfTI array axis.
+        A ``(nibabel.Nifti1Image, datasets)`` tuple. With the native backend,
+        datasets are ordered along the third NIfTI array axis. The dcm2niix
+        backend returns an empty dataset list because dcm2niix does not expose
+        pydicom Dataset objects.
 
     Raises:
-        ImportError: If pydicom or nibabel is not installed.
+        ImportError: If a required Python package is not installed.
         NotADirectoryError: If ``directory`` is not a directory.
-        ValueError: If selection, pixel data, or spatial geometry is invalid.
+        FileNotFoundError: If the dcm2niix executable cannot be found.
+        RuntimeError: If dcm2niix fails.
+        ValueError: If an option, selection, pixel data, or geometry is invalid.
     """
+    if backend not in ("native", "dcm2niix"):
+        raise ValueError("backend must be 'native' or 'dcm2niix'")
     if z_spacing not in ("position", "slice_thickness"):
         raise ValueError("z_spacing must be 'position' or 'slice_thickness'")
     if geometry_tolerance <= 0 or spacing_tolerance <= 0:
         raise ValueError("geometry_tolerance and spacing_tolerance must be positive")
 
-    pydicom = require("pydicom", extra="imaging")
     nib = require("nibabel", extra="imaging")
     directory = Path(directory)
     if not directory.is_dir():
         raise NotADirectoryError(directory)
+
+    if backend == "dcm2niix":
+        if series_uid is not None:
+            raise ValueError("series_uid is only supported by backend='native'")
+        if z_spacing != "position":
+            raise ValueError("z_spacing is only configurable with backend='native'")
+
+        command = str(dcm2niix_command)
+        executable = shutil.which(command)
+        if executable is None:
+            command_path = Path(command).expanduser()
+            if not command_path.is_file():
+                raise FileNotFoundError(f"dcm2niix executable not found: {command}")
+            executable = str(command_path)
+
+        with tempfile.TemporaryDirectory(prefix="medical-toolkit-dcm2niix-") as output_dir:
+            result = subprocess.run(
+                [
+                    executable,
+                    "-b",
+                    "n",
+                    "-z",
+                    "n",
+                    "-f",
+                    "converted",
+                    "-o",
+                    output_dir,
+                    str(directory),
+                ],
+                check=False,
+                capture_output=True,
+                text=True,
+            )
+            if result.returncode != 0:
+                detail = result.stderr.strip() or result.stdout.strip()
+                raise RuntimeError(
+                    f"dcm2niix failed with exit code {result.returncode}: {detail}"
+                )
+            outputs = sorted(Path(output_dir).glob("*.nii"))
+            if not outputs:
+                detail = result.stderr.strip() or result.stdout.strip()
+                raise RuntimeError(f"dcm2niix did not produce a NIfTI file: {detail}")
+            if len(outputs) != 1:
+                names = [path.name for path in outputs]
+                raise ValueError(
+                    "dcm2niix produced multiple NIfTI files; provide a directory "
+                    f"containing exactly one convertible series: {names}"
+                )
+
+            converted = nib.load(str(outputs[0]))
+            # Materialize data before TemporaryDirectory removes the NIfTI file.
+            data = np.asanyarray(converted.dataobj).copy()
+            image = nib.Nifti1Image(
+                data,
+                np.asarray(converted.affine).copy(),
+                header=converted.header.copy(),
+            )
+            return image, []
+
+    pydicom = require("pydicom", extra="imaging")
 
     series: dict[str, list[Any]] = defaultdict(list)
     read_errors: list[str] = []

@@ -404,6 +404,12 @@ nifti_image, ordered_datasets = convert_dicom_to_nifti(
     z_spacing="slice_thickness",
 )
 
+# Alternatively, delegate conversion to an installed dcm2niix executable.
+nifti_image, ordered_datasets = convert_dicom_to_nifti(
+    "data/dicom_series",
+    backend="dcm2niix",
+)
+
 volume, affine = read_nifti("data/scan.nii.gz")
 write_nifti(volume, affine, "outputs/scan-copy.nii.gz")
 ```
@@ -416,6 +422,14 @@ The strict converter defaults to `z_spacing="position"`, calculated from
 irregular or duplicate slice positions, multi-frame data, colour images, and
 in-plane slice displacement rather than silently constructing an unreliable
 affine.
+
+Set `backend="dcm2niix"` to use the external dcm2niix program instead of the
+package's pydicom converter. dcm2niix must be installed separately and available
+on `PATH`; use `dcm2niix_command="/path/to/dcm2niix"` for a custom location.
+The input directory must produce exactly one NIfTI output. `series_uid` and
+`z_spacing` are native-backend options and cannot be combined with dcm2niix.
+Because dcm2niix does not expose pydicom objects, `ordered_datasets` is an empty
+list with this backend.
 
 `read_nifti` returns `(volume, affine)` and reads volume data as `float32` by
 default. `write_nifti` requires a 4-by-4 affine matrix.

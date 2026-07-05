@@ -474,6 +474,12 @@ nifti_image, ordered_datasets = convert_dicom_to_nifti(
     series_uid="1.2.840...",
     z_spacing="slice_thickness",
 )
+
+# 也可以交给已安装的 dcm2niix 转换
+nifti_image, ordered_datasets = convert_dicom_to_nifti(
+    "data/dicom_series",
+    backend="dcm2niix",
+)
 ```
 
 DICOM 读取基于 SimpleITK。如果目录中包含多个 series，必须显式传入 `series_id`，避免
@@ -485,6 +491,12 @@ DICOM 读取基于 SimpleITK。如果目录中包含多个 series，必须显式
 严格转换函数不会猜测缺失的空间信息。遇到几何信息缺失或不一致、层距不规则、重复
 切片、多帧或彩色数据，以及切片平面内位移时会抛出 `ValueError`，以避免生成空间信息
 不可靠的 NIfTI。
+
+设置 `backend="dcm2niix"` 可使用外部 dcm2niix 程序，而不是项目内的 pydicom 转换
+实现。dcm2niix 需要单独安装并位于 `PATH` 中；自定义位置可通过
+`dcm2niix_command="/path/to/dcm2niix"` 指定。输入目录必须恰好生成一个 NIfTI；
+`series_uid` 和 `z_spacing` 仅适用于原生后端，不能与 dcm2niix 同时使用。由于
+dcm2niix 不提供 pydicom Dataset，使用该后端时 `ordered_datasets` 为空列表。
 
 ### NIfTI 读写
 
