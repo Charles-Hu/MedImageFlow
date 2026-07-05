@@ -384,6 +384,7 @@ Install the `imaging` extra first.
 
 ```python
 from medical_toolkit.io import (
+    convert_dicom_to_nifti,
     dicom_series_to_nifti,
     read_dicom_series,
     read_nifti,
@@ -393,11 +394,29 @@ from medical_toolkit.io import (
 image = read_dicom_series("data/dicom_series")
 dicom_series_to_nifti("data/dicom_series", "outputs/scan.nii.gz")
 
+# Strict pydicom/nibabel conversion returning an in-memory NIfTI image.
+nifti_image, ordered_datasets = convert_dicom_to_nifti("data/dicom_series")
+
+# Optionally use SliceThickness instead of adjacent slice positions for z spacing.
+nifti_image, ordered_datasets = convert_dicom_to_nifti(
+    "data/dicom_series",
+    series_uid="1.2.840...",
+    z_spacing="slice_thickness",
+)
+
 volume, affine = read_nifti("data/scan.nii.gz")
 write_nifti(volume, affine, "outputs/scan-copy.nii.gz")
 ```
 
-If a DICOM directory contains multiple series, pass `series_id` explicitly.
+If a DICOM directory contains multiple series, pass `series_id` to the
+SimpleITK functions or `series_uid` to `convert_dicom_to_nifti` explicitly.
+The strict converter defaults to `z_spacing="position"`, calculated from
+`ImagePositionPatient`. Its `z_spacing="slice_thickness"` option uses the
+`SliceThickness` tag instead. It rejects missing or inconsistent geometry,
+irregular or duplicate slice positions, multi-frame data, colour images, and
+in-plane slice displacement rather than silently constructing an unreliable
+affine.
+
 `read_nifti` returns `(volume, affine)` and reads volume data as `float32` by
 default. `write_nifti` requires a 4-by-4 affine matrix.
 

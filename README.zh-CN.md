@@ -451,7 +451,11 @@ dataset = MedicalImageDataset(
 ### DICOM 序列读取与转换
 
 ```python
-from medical_toolkit.io import dicom_series_to_nifti, read_dicom_series
+from medical_toolkit.io import (
+    convert_dicom_to_nifti,
+    dicom_series_to_nifti,
+    read_dicom_series,
+)
 
 image = read_dicom_series("data/dicom_series")
 
@@ -460,10 +464,27 @@ output_path = dicom_series_to_nifti(
     "outputs/scan.nii.gz",
     compress=True,
 )
+
+# 严格转换，直接返回内存中的 Nifti1Image 和排序后的 DICOM datasets
+nifti_image, ordered_datasets = convert_dicom_to_nifti("data/dicom_series")
+
+# 可选：使用 SliceThickness 作为 z 轴层间距
+nifti_image, ordered_datasets = convert_dicom_to_nifti(
+    "data/dicom_series",
+    series_uid="1.2.840...",
+    z_spacing="slice_thickness",
+)
 ```
 
 DICOM 读取基于 SimpleITK。如果目录中包含多个 series，必须显式传入 `series_id`，避免
-静默选择错误序列。
+静默选择错误序列。严格转换函数 `convert_dicom_to_nifti` 基于 pydicom 和 nibabel；多
+序列目录需要传入 `series_uid`。其默认值 `z_spacing="position"` 从相邻切片的
+`ImagePositionPatient` 计算 z 轴层间距；`z_spacing="slice_thickness"` 则使用
+`SliceThickness`。
+
+严格转换函数不会猜测缺失的空间信息。遇到几何信息缺失或不一致、层距不规则、重复
+切片、多帧或彩色数据，以及切片平面内位移时会抛出 `ValueError`，以避免生成空间信息
+不可靠的 NIfTI。
 
 ### NIfTI 读写
 
