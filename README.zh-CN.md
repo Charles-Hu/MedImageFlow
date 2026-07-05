@@ -565,6 +565,6 @@ src/medical_toolkit/
 - 每个数组最多支持一个 channel 轴
 - 尚未提供内置空间增强；可通过共享 transform 接口接入 MONAI、TorchIO 或自定义实现
 
-## License
+## 许可证
 
-[MIT](LICENSE)
+[BSD 3-Clause License](LICENSE)

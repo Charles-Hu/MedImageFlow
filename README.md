@@ -492,4 +492,4 @@ src/medical_toolkit/
 
 ## License
 
-[MIT](LICENSE)
+[BSD 3-Clause License](LICENSE)

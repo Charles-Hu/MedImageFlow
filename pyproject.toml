@@ -8,12 +8,12 @@ version = "0.1.0"
 description = "Reusable medical image I/O, datasets, transforms, and utilities."
 readme = "README.md"
 requires-python = ">=3.9"
-license = { text = "MIT" }
+license = { text = "BSD-3-Clause" }
 authors = [{ name = "Charles" }]
 keywords = ["medical-imaging", "dicom", "nifti", "pytorch"]
 classifiers = [
   "Development Status :: 2 - Pre-Alpha",
-  "License :: OSI Approved :: MIT License",
+  "License :: OSI Approved :: BSD License",
   "Programming Language :: Python :: 3",
   "Programming Language :: Python :: 3.9",
   "Programming Language :: Python :: 3.10",
