@@ -8,16 +8,35 @@ DataLoader 适配，以及基础 DICOM/NIfTI I/O。
 
 > 当前版本为 `0.1.0`，仍处于早期开发阶段。未经独立验证，请勿将输出用于临床决策。
 
-## 功能概览
+## 快速了解
 
-- 一个样本可包含任意数量的命名图像路径，例如 CT、MRI、MRA、label 和 ROI
-- 内置读取 NIfTI、`.npy` 和 DICOM 序列目录，也可扩展自定义 reader
-- 支持整图读取，以及带 channel 的 2D/3D patch 读取
-- 多模态数据共享同一个 patch 中心和裁剪范围
-- 支持整图级、patch 级，以及共享和字段独立的数据处理
-- 支持整图随机中心和二值 ROI 内随机中心
-- patch 越界时使用 `numpy.pad` 填充
-- 可选 PyTorch DataLoader、DICOM 和 NIfTI 支持
+工具箱采用一条以路径为起点的数据流程：
+
+```text
+图像路径 + 非图像特征
+          ↓
+        Sample
+          ↓
+读取器 → 整图 transform → 多模态同步采样与填充
+          ↓
+Patch transform → Dataset → 可选 PyTorch DataLoader
+```
+
+主要功能：
+
+- **组织数据：**使用 [`Sample`](#数据模型) 管理命名模态、label、ROI、metadata 和
+  非图像特征。
+- **读取图像：**使用内置 NIfTI、NumPy、DICOM [图像读取器](#图像读取器)，或注册
+  自定义 reader。
+- **处理整图：**执行共享或按模态独立的[整图变换](#整图-dataset)。
+- **构建对齐 Patch：**进行多模态同步的 [2D/3D Patch 提取](#多模态-patch-dataset)，
+  包括 [ROI 中心采样和越界填充](#patch-中心采样)。
+- **训练与诊断：**接入 PyTorch DataLoader，并可选输出[数据管线耗时](#可选性能计时)。
+- **转换医学影像格式：**使用 [DICOM 与 NIfTI 工具](#dicom-与-nifti)，可选择严格的
+  pydicom 转换或 dcm2niix 后端。
+
+请先查看[安装说明](#安装)，再按实际任务跳转到对应章节。用于正式流程前，建议阅读
+[当前限制](#当前限制)。
 
 ## 安装
 

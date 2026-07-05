@@ -9,19 +9,39 @@ DataLoader integration, optional profiling, and basic DICOM/NIfTI I/O.
 > Version `0.1.0` is an early-stage release. Do not use unvalidated outputs for
 > clinical decisions.
 
-## Features
+## At a Glance
 
-- Store image paths instead of loading the complete dataset into memory.
-- Attach any number of named modalities, labels, and sampling masks to a sample.
-- Attach batchable non-image features such as age and clinical measurements.
-- Read NIfTI, `.npy`, and DICOM series directories through extensible readers.
-- Extract synchronized 2D or 3D patches from all aligned image fields.
-- Sample centers globally or from a binary ROI.
-- Allow patch centers outside image boundaries and pad with `numpy.pad` modes.
-- Preserve complete spatial axes by setting their patch size to `None`.
-- Apply shared and field-specific processing at whole-image and patch levels.
-- Use custom normalization and feature preprocessing callables.
-- Optionally report data-loading and processing time for every iteration.
+The toolkit follows one path-first pipeline:
+
+```text
+Image paths + features
+          ↓
+        Sample
+          ↓
+Reader → whole-image transforms → synchronized sampling/padding
+          ↓
+Patch transforms → Dataset → optional PyTorch DataLoader
+```
+
+Main capabilities:
+
+- **Organize data:** model named modalities, labels, ROIs, metadata, and
+  non-image features with [`Sample`](#sample-model).
+- **Read images:** use built-in NIfTI, NumPy, and DICOM
+  [image readers](#image-readers), or register a custom reader.
+- **Process complete images:** apply shared or modality-specific
+  [whole-image transforms](#whole-image-dataset).
+- **Build aligned patches:** perform synchronized 2D/3D
+  [multimodal patch extraction](#multimodal-patch-dataset), including
+  [ROI sampling and boundary padding](#patch-center-sampling).
+- **Train and inspect:** connect to PyTorch DataLoader and optionally
+  [report pipeline timing](#optional-performance-timing).
+- **Convert medical formats:** use the [DICOM and NIfTI tools](#dicom-and-nifti-io),
+  including strict pydicom conversion or a dcm2niix backend.
+
+Start with [installation](#installation), then choose the detailed section
+matching your workflow. Before production use, review the
+[current limitations](#current-limitations).
 
 ## Installation
 
