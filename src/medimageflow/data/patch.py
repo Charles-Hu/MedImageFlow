@@ -361,6 +361,7 @@ class RandomPatchSampler:
 
         seed = None if self.seed is None else np.random.SeedSequence([self.seed, seed_offset])
         rng = np.random.default_rng(seed)
+        centers: NDArray[np.int64]
 
         if center_mask is not None:
             mask = np.asarray(center_mask)
