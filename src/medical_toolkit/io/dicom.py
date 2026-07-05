@@ -2,17 +2,16 @@
 
 from __future__ import annotations
 
-from collections import defaultdict
-from pathlib import Path
 import shutil
 import subprocess
 import tempfile
+from collections import defaultdict
+from pathlib import Path
 from typing import Any, Literal
 
 import numpy as np
 
 from medical_toolkit.utils.optional import require
-
 
 ZSpacingSource = Literal["position", "slice_thickness"]
 DICOMConversionBackend = Literal["native", "dcm2niix"]
@@ -218,7 +217,10 @@ def convert_dicom_to_nifti(
     for index, ds in enumerate(datasets):
         shape = (int(ds.Rows), int(ds.Columns))
         if shape != first_shape:
-            raise ValueError(f"Inconsistent image shape at instance {index}: {shape} != {first_shape}")
+            raise ValueError(
+                f"Inconsistent image shape at instance {index}: "
+                f"{shape} != {first_shape}"
+            )
         spacing = np.asarray(ds.PixelSpacing, dtype=np.float64)
         if spacing.shape != (2,) or not np.allclose(
             spacing,
