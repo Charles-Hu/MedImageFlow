@@ -7,7 +7,7 @@ from dataclasses import dataclass, field
 from numbers import Number
 from pathlib import Path
 from time import perf_counter
-from typing import Any
+from typing import Any, Protocol, Union
 
 import numpy as np
 from numpy.typing import NDArray
@@ -26,7 +26,19 @@ SampleDict = dict[str, Any]
 Transform = Callable[[SampleDict], SampleDict]
 ArrayTransform = Callable[[NDArray[Any]], NDArray[Any]]
 FeatureTransform = Callable[[Any], Any]
+FieldSelection = Union[Sequence[str], Mapping[str, str]]
 TIMING_KEY = "__timing__"
+
+
+def _field_mapping(selection: FieldSelection | None) -> dict[str, str]:
+    """Normalize a field-name sequence or output-to-input mapping."""
+    if selection is None:
+        return {}
+    if isinstance(selection, Mapping):
+        return dict(selection)
+    if isinstance(selection, str):
+        raise TypeError("field selection must be a sequence or mapping, not a string")
+    return {name: name for name in selection}
 
 
 @dataclass(frozen=True)
@@ -42,13 +54,90 @@ class Sample:
     id: str | None = None
     metadata: Mapping[str, Any] = field(default_factory=dict)
 
+    @classmethod
+    def from_mapping(
+        cls,
+        record: Mapping[str, Any],
+        *,
+        paths: Mapping[str, str],
+        features: FieldSelection | None = None,
+        id: str | None = None,
+        metadata: FieldSelection | None = None,
+        base_dir: str | Path | None = None,
+    ) -> Sample:
+        """Build a sample by selecting fields from one record.
+
+        Mapping arguments use ``{output_name: record_field}``. A sequence used
+        for ``features`` or ``metadata`` preserves the record field names.
+
+        Args:
+            record: Source record, such as a CSV row or database result.
+            paths: Sample path names mapped to fields in ``record``.
+            features: Feature fields to select and optionally rename.
+            id: Record field used as the sample identifier.
+            metadata: Metadata fields to select and optionally rename.
+            base_dir: Directory prepended to relative paths.
+
+        Returns:
+            A sample containing the selected record values.
+
+        Raises:
+            KeyError: If a selected field is absent from ``record``.
+            TypeError: If a selected path is not a string or ``Path``.
+        """
+
+        def select(selection: FieldSelection | None) -> dict[str, Any]:
+            output: dict[str, Any] = {}
+            for output_name, record_field in _field_mapping(selection).items():
+                if record_field not in record:
+                    raise KeyError(f"Record field {record_field!r} is missing")
+                output[output_name] = record[record_field]
+            return output
+
+        if not paths:
+            raise ValueError("paths must contain at least one field mapping")
+        selected_paths: dict[str, Path] = {}
+        root = Path(base_dir) if base_dir is not None else None
+        for output_name, record_field in paths.items():
+            if record_field not in record:
+                raise KeyError(f"Record path field {record_field!r} is missing")
+            value = record[record_field]
+            if not isinstance(value, (str, Path)):
+                raise TypeError(f"Record path field {record_field!r} must be str or Path")
+            path = Path(value)
+            selected_paths[output_name] = root / path if root and not path.is_absolute() else path
+
+        identifier = None
+        if id is not None:
+            if id not in record:
+                raise KeyError(f"Record ID field {id!r} is missing")
+            identifier = str(record[id])
+        return cls(
+            paths=selected_paths,
+            features=select(features),
+            id=identifier,
+            metadata=select(metadata),
+        )
+
+
+class SampleSource(Protocol):
+    """Indexable source that returns samples on demand."""
+
+    def __len__(self) -> int:
+        """Return the number of available samples."""
+        ...
+
+    def __getitem__(self, index: int) -> Sample:
+        """Return the sample at ``index``."""
+        ...
+
 
 class MedicalImageDataset:
     """Whole-image dataset with shared and per-field processing hooks."""
 
     def __init__(
         self,
-        samples: Sequence[Sample],
+        samples: Sequence[Sample] | SampleSource,
         *,
         readers: Sequence[ImageReader] = (),
         image_transform: Transform | None = None,
@@ -66,12 +155,52 @@ class MedicalImageDataset:
             feature_transforms: Per-feature transforms keyed by feature name.
             timing: Whether to collect per-sample stage timings.
         """
-        self.samples = list(samples)
+        self.samples = samples
         self.readers = ReaderRegistry(readers)
         self.image_transform = image_transform
         self.image_field_transforms = dict(image_field_transforms or {})
         self.feature_transforms = dict(feature_transforms or {})
         self.timing = timing
+
+    @classmethod
+    def from_csv(
+        cls,
+        csv_path: str | Path,
+        *,
+        paths: Mapping[str, str],
+        features: FieldSelection | None = None,
+        id: str | None = None,
+        metadata: FieldSelection | None = None,
+        base_dir: str | Path | None = None,
+        encoding: str = "utf-8-sig",
+        **dataset_options: Any,
+    ) -> MedicalImageDataset:
+        """Create a dataset backed by lazily converted CSV records."""
+        from medical_toolkit.data.sources import CSVSampleSource
+
+        source = CSVSampleSource(
+            csv_path,
+            paths=paths,
+            features=features,
+            id=id,
+            metadata=metadata,
+            base_dir=base_dir,
+            encoding=encoding,
+        )
+        return cls(source, **dataset_options)
+
+    @classmethod
+    def from_directory(
+        cls,
+        root: str | Path,
+        *,
+        paths: Mapping[str, str],
+        **dataset_options: Any,
+    ) -> MedicalImageDataset:
+        """Create a dataset by matching ``{id}`` path patterns below a root."""
+        from medical_toolkit.data.sources import DirectorySampleSource
+
+        return cls(DirectorySampleSource(root, paths=paths), **dataset_options)
 
     def enable_timing(self, enabled: bool = True) -> None:
         """Enable or disable per-sample stage timing metadata.
@@ -230,7 +359,7 @@ class PatchDataset(MedicalImageDataset):
 
     def __init__(
         self,
-        samples: Sequence[Sample],
+        samples: Sequence[Sample] | SampleSource,
         sampler: PatchSampler,
         *,
         spatial_dims: int,

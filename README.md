@@ -92,6 +92,68 @@ may be strings or `pathlib.Path` objects. The current implementation reads each
 image completely inside `Dataset.__getitem__`; storage-level lazy patch I/O is
 not implemented yet.
 
+### Building samples from records and sources
+
+You do not need to construct a complete `Sample` list manually. The first
+layer, `Sample.from_mapping()`, independently converts one CSV, JSON, or
+database record. Mapping keys name the sample fields and values name the
+record fields:
+
+```python
+sample = Sample.from_mapping(
+    record,
+    paths={"ct": "ct_path", "label": "label_path"},
+    features={"age": "patient_age"},
+    id="patient_id",
+    metadata=("site",),
+    base_dir="data",
+)
+```
+
+The second layer provides indexable sources: `MappingSampleSource`,
+`CSVSampleSource`, and pattern-based `DirectorySampleSource`. Samples are
+constructed only when their index is accessed:
+
+```python
+from medical_toolkit.data import CSVSampleSource, DirectorySampleSource
+
+csv_source = CSVSampleSource(
+    "data/samples.csv",
+    paths={"ct": "ct_path", "label": "label_path"},
+    features=("age",),
+    id="patient_id",
+)
+
+directory_source = DirectorySampleSource(
+    "data/cases",
+    paths={"ct": "{id}/ct.nii.gz", "label": "{id}/label.nii.gz"},
+)
+```
+
+Directory patterns must be relative and contain exactly one `{id}`. Missing
+modalities, duplicate matches, empty CSV files, and duplicate CSV IDs fail
+early. Relative paths in a CSV are resolved from the CSV file's directory.
+
+The third layer exposes matching dataset shortcuts:
+
+```python
+dataset = MedicalImageDataset.from_csv(
+    "data/samples.csv",
+    paths={"ct": "ct_path", "label": "label_path"},
+    features=("age",),
+    id="patient_id",
+)
+
+directory_dataset = MedicalImageDataset.from_directory(
+    "data/cases",
+    paths={"ct": "{id}/ct.nii.gz", "label": "{id}/label.nii.gz"},
+)
+```
+
+The original `MedicalImageDataset([Sample(...)])` API remains valid. A custom
+object implementing the `SampleSource` protocol (`__len__` and `__getitem__`)
+can also be passed directly.
+
 ### Non-image features
 
 `features` contains values that participate in training or inference. Numeric

@@ -85,6 +85,64 @@ sample = Sample(
 `pathlib.Path`。当前实现在 `Dataset.__getitem__()` 中完整读取每个图像，然后转为
 `numpy.ndarray`；尚未实现只从磁盘读取目标 patch 的惰性 I/O。
 
+### 从记录和数据源构建样本
+
+不必先手工构建完整的 `Sample` 列表。第一层 `Sample.from_mapping()` 可以独立把一条
+CSV、JSON 或数据库记录转换为样本。映射的左侧是样本中的名称，右侧是记录字段名：
+
+```python
+sample = Sample.from_mapping(
+    record,
+    paths={"ct": "ct_path", "label": "label_path"},
+    features={"age": "patient_age"},
+    id="patient_id",
+    metadata=("site",),
+    base_dir="data",
+)
+```
+
+第二层是可索引的惰性样本源。`MappingSampleSource` 接受任意记录序列，
+`CSVSampleSource` 读取表格但只在访问某行时构建 `Sample`，`DirectorySampleSource`
+则用明确的 `{id}` 模式配对文件：
+
+```python
+from medical_toolkit.data import CSVSampleSource, DirectorySampleSource
+
+csv_source = CSVSampleSource(
+    "data/samples.csv",
+    paths={"ct": "ct_path", "label": "label_path"},
+    features=("age",),
+    id="patient_id",
+)
+
+directory_source = DirectorySampleSource(
+    "data/cases",
+    paths={"ct": "{id}/ct.nii.gz", "label": "{id}/label.nii.gz"},
+)
+```
+
+目录模式必须是相对路径且恰好包含一个 `{id}`。缺失模态、重复匹配、空 CSV 和重复
+CSV ID 会立即报错。CSV 中的相对影像路径默认相对于 CSV 文件所在目录解析。
+
+第三层提供 Dataset 快捷入口，参数与独立数据源保持一致：
+
+```python
+dataset = MedicalImageDataset.from_csv(
+    "data/samples.csv",
+    paths={"ct": "ct_path", "label": "label_path"},
+    features=("age",),
+    id="patient_id",
+)
+
+directory_dataset = MedicalImageDataset.from_directory(
+    "data/cases",
+    paths={"ct": "{id}/ct.nii.gz", "label": "{id}/label.nii.gz"},
+)
+```
+
+原有的 `MedicalImageDataset([Sample(...)])` 用法仍然有效，也可以直接传入任何实现
+`SampleSource` 协议（提供 `__len__` 和 `__getitem__`）的自定义对象。
+
 ### 非图像特征
 
 `features` 用于需要参与训练或推理的非图像数据，例如年龄、性别、实验室指标和其他

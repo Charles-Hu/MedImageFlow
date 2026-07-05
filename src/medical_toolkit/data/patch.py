@@ -154,13 +154,24 @@ def normalize_center_range(
         ValueError: If shape is invalid or a fraction is outside ``[0, 1]``.
     """
     raw = tuple(value)
-    if len(raw) == 2 and all(isinstance(item, (int, float)) for item in raw):
-        pair = (float(raw[0]), float(raw[1]))  # type: ignore[arg-type]
+    result: CenterRange
+    if (
+        len(raw) == 2
+        and isinstance(raw[0], (int, float))
+        and isinstance(raw[1], (int, float))
+    ):
+        pair = (float(raw[0]), float(raw[1]))
         result = (pair,) * spatial_dims
     else:
-        result = tuple(
-            tuple(float(number) for number in pair) for pair in raw
-        )  # type: ignore[arg-type]
+        parsed: list[tuple[float, float]] = []
+        for item in raw:
+            if not isinstance(item, Sequence) or len(item) != 2:
+                raise ValueError(
+                    f"center_range must be one pair or {spatial_dims} "
+                    "(before, after) pairs"
+                )
+            parsed.append((float(item[0]), float(item[1])))
+        result = tuple(parsed)
     if len(result) != spatial_dims or any(len(pair) != 2 for pair in result):
         raise ValueError(
             f"center_range must be one pair or {spatial_dims} (before, after) pairs"
@@ -228,8 +239,14 @@ def extract_centered_patch(
             f"padding_mode={padding_mode!r} cannot pad a patch with no source voxels; "
             "use constant padding or reduce center_range"
         )
-    kwargs = {"constant_values": padding_value} if padding_mode == "constant" else {}
-    return np.pad(cropped, pad_width, mode=padding_mode, **kwargs)
+    if padding_mode == "constant":
+        return np.pad(
+            cropped,
+            pad_width,
+            mode="constant",
+            constant_values=padding_value,
+        )
+    return np.pad(cropped, pad_width, mode=padding_mode)
 
 
 def extract_patch(

@@ -7,9 +7,10 @@ import subprocess
 import tempfile
 from collections import defaultdict
 from pathlib import Path
-from typing import Any, Literal
+from typing import Any, Literal, cast
 
 import numpy as np
+from numpy.typing import NDArray
 
 from medical_toolkit.utils.optional import require
 
@@ -179,14 +180,14 @@ def convert_dicom_to_nifti(
         if int(getattr(ds, "SamplesPerPixel", 1)) != 1:
             raise ValueError("Colour or multi-sample DICOM is not supported")
 
-    def unit_vector(values: Any, label: str) -> np.ndarray[Any, np.dtype[np.float64]]:
+    def unit_vector(values: Any, label: str) -> NDArray[np.float64]:
         vector = np.asarray(values, dtype=np.float64)
         if vector.shape != (3,) or not np.all(np.isfinite(vector)):
             raise ValueError(f"Invalid {label}: expected three finite values")
         norm = float(np.linalg.norm(vector))
         if norm <= geometry_tolerance:
             raise ValueError(f"Invalid zero-length {label}")
-        return vector / norm
+        return cast(NDArray[np.float64], np.asarray(vector / norm, dtype=np.float64))
 
     first = datasets[0]
     iop = np.asarray(first.ImageOrientationPatient, dtype=np.float64)
