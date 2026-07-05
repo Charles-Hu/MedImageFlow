@@ -16,7 +16,7 @@ dist/
 .idea/
 .vscode/
 outputs/
+DEVELOPMENT_PLAN.local.md
 *.dcm
 *.nii
 *.nii.gz
-
