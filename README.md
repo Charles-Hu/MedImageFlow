@@ -1,4 +1,4 @@
-# Medical Imaging Toolkit
+# MedImageFlow
 
 **English** | [简体中文](README.zh-CN.md)
 
@@ -48,16 +48,19 @@ matching your workflow. Before production use, review the
 Python 3.9 or later is required.
 
 ```bash
-# Core package and NumPy
-python -m pip install -e .
+# Core package and NumPy from PyPI
+python -m pip install medimageflow
 
 # DICOM and NIfTI support
-python -m pip install -e ".[imaging]"
+python -m pip install "medimageflow[imaging]"
 
 # PyTorch DataLoader support
-python -m pip install -e ".[torch]"
+python -m pip install "medimageflow[torch]"
 
-# All runtime features and development tools
+# All runtime features
+python -m pip install "medimageflow[all]"
+
+# Editable source installation with development tools
 python -m pip install -e ".[all,dev]"
 ```
 
@@ -67,7 +70,7 @@ python -m pip install -e ".[all,dev]"
 free-form metadata:
 
 ```python
-from medical_toolkit.data import Sample
+from medimageflow.data import Sample
 
 sample = Sample(
     paths={
@@ -115,7 +118,7 @@ The second layer provides indexable sources: `MappingSampleSource`,
 constructed only when their index is accessed:
 
 ```python
-from medical_toolkit.data import CSVSampleSource, DirectorySampleSource
+from medimageflow.data import CSVSampleSource, DirectorySampleSource
 
 csv_source = CSVSampleSource(
     "data/samples.csv",
@@ -161,7 +164,7 @@ scalars are automatically converted to NumPy arrays with shape `(1,)`, so the
 default PyTorch collation produces `(batch_size, 1)` values.
 
 ```python
-from medical_toolkit.data import MedicalImageDataset
+from medimageflow.data import MedicalImageDataset
 
 
 def normalize_age(value):
@@ -187,8 +190,8 @@ name must have collatable, consistent shapes across a batch.
 ## Whole-image Dataset
 
 ```python
-from medical_toolkit.data import MedicalImageDataset
-from medical_toolkit.transforms import MinMaxNormalize, ZScoreNormalize
+from medimageflow.data import MedicalImageDataset
+from medimageflow.transforms import MinMaxNormalize, ZScoreNormalize
 
 dataset = MedicalImageDataset(
     samples=[sample],
@@ -236,8 +239,8 @@ Array transforms must return `numpy.ndarray`. Use `image_transform` or
 All configured image fields use one shared center and crop geometry:
 
 ```python
-from medical_toolkit.data import PatchDataset, RandomPatchSampler, create_dataloader
-from medical_toolkit.transforms import MinMaxNormalize, ZScoreNormalize
+from medimageflow.data import PatchDataset, RandomPatchSampler, create_dataloader
+from medimageflow.transforms import MinMaxNormalize, ZScoreNormalize
 
 dataset = PatchDataset(
     samples=[sample],
@@ -409,7 +412,7 @@ loader = create_dataloader(
 Before returning each batch, the loader reports:
 
 ```text
-[medical_toolkit timing] iteration=1 dataloader_total=0.182341s data_read=0.241020s image_processing=0.031240s feature_processing=0.000021s patch_extraction=0.004812s patch_processing=0.012005s
+[medimageflow timing] iteration=1 dataloader_total=0.182341s data_read=0.241020s image_processing=0.031240s feature_processing=0.000021s patch_extraction=0.004812s patch_processing=0.012005s
 ```
 
 - `dataloader_total`: wall time spent waiting for `next(loader)`;
@@ -440,7 +443,7 @@ from pathlib import Path
 
 import numpy as np
 
-from medical_toolkit.data import MedicalImageDataset, Sample
+from medimageflow.data import MedicalImageDataset, Sample
 
 
 class CustomReader:
@@ -465,7 +468,7 @@ Custom readers are checked before built-in readers and must return
 Install the `imaging` extra first.
 
 ```python
-from medical_toolkit.io import (
+from medimageflow.io import (
     convert_dicom_to_nifti,
     dicom_series_to_nifti,
     read_dicom_series,
@@ -519,7 +522,7 @@ default. `write_nifti` requires a 4-by-4 affine matrix.
 ## Utilities
 
 ```python
-from medical_toolkit.utils import find_files
+from medimageflow.utils import find_files
 
 paths = find_files("data", pattern="*.nii.gz", recursive=True)
 ```
@@ -533,7 +536,7 @@ mypy src
 ```
 
 ```text
-src/medical_toolkit/
+src/medimageflow/
 ├── data/        # readers, datasets, DataLoader, sampling, and extraction
 ├── io/          # DICOM and NIfTI
 ├── transforms/  # composition and intensity transforms

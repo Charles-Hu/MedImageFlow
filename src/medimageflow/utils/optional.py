@@ -21,5 +21,5 @@ def require(module: str, *, extra: str) -> ModuleType:
         package = module.split(".", maxsplit=1)[0]
         raise ImportError(
             f"Optional dependency {package!r} is required. "
-            f'Install it with: pip install "medical-imaging-toolkit[{extra}]"'
+            f'Install it with: pip install "medimageflow[{extra}]"'
         ) from error

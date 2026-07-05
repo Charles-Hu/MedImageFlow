@@ -1,11 +1,11 @@
 """Medical image input/output interfaces."""
 
-from medical_toolkit.io.dicom import (
+from medimageflow.io.dicom import (
     convert_dicom_to_nifti,
     dicom_series_to_nifti,
     read_dicom_series,
 )
-from medical_toolkit.io.nifti import read_nifti, write_nifti
+from medimageflow.io.nifti import read_nifti, write_nifti
 
 __all__ = [
     "convert_dicom_to_nifti",

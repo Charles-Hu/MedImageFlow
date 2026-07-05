@@ -9,8 +9,8 @@ from typing import Protocol, runtime_checkable
 import numpy as np
 from numpy.typing import NDArray
 
-from medical_toolkit.io import read_dicom_series, read_nifti
-from medical_toolkit.utils.optional import require
+from medimageflow.io import read_dicom_series, read_nifti
+from medimageflow.utils.optional import require
 
 
 @runtime_checkable

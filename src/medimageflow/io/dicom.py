@@ -12,7 +12,7 @@ from typing import Any, Literal, cast
 import numpy as np
 from numpy.typing import NDArray
 
-from medical_toolkit.utils.optional import require
+from medimageflow.utils.optional import require
 
 ZSpacingSource = Literal["position", "slice_thickness"]
 DICOMConversionBackend = Literal["native", "dcm2niix"]

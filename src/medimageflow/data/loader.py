@@ -6,8 +6,8 @@ from collections.abc import Callable, Iterator, Mapping
 from time import perf_counter
 from typing import Any
 
-from medical_toolkit.data.dataset import TIMING_KEY
-from medical_toolkit.utils.optional import require
+from medimageflow.data.dataset import TIMING_KEY
+from medimageflow.utils.optional import require
 
 
 def _metric_total(value: Any) -> float:
@@ -78,7 +78,7 @@ class _TimedIterator:
         self._iteration += 1
         stages = _stage_totals(batch)
         self._reporter(
-            "[medical_toolkit timing] "
+            "[medimageflow timing] "
             f"iteration={self._iteration} "
             f"dataloader_total={total:.6f}s "
             f"data_read={stages.get('data_read', 0.0):.6f}s "

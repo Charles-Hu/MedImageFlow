@@ -1,12 +1,12 @@
 import numpy as np
 
-from medical_toolkit.data import (
+from medimageflow.data import (
     GridPatchSampler,
     PatchDataset,
     RandomPatchSampler,
     Sample,
 )
-from medical_toolkit.transforms import MinMaxNormalize, ZScoreNormalize
+from medimageflow.transforms import MinMaxNormalize, ZScoreNormalize
 
 
 def test_image_transform_runs_before_patch_transform(tmp_path) -> None:

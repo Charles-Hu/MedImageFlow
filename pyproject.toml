@@ -1,19 +1,19 @@
 [build-system]
-requires = ["hatchling>=1.25"]
+requires = ["hatchling>=1.27"]
 build-backend = "hatchling.build"
 
 [project]
-name = "medical-imaging-toolkit"
-version = "0.1.0"
+name = "medimageflow"
+dynamic = ["version"]
 description = "Reusable medical image I/O, datasets, transforms, and utilities."
 readme = "README.md"
 requires-python = ">=3.9"
-license = { text = "BSD-3-Clause" }
-authors = [{ name = "Charles" }]
+license = "BSD-3-Clause"
+license-files = ["LICENSE"]
+authors = [{ name = "Charles Hu", email = "hujunhao.charles@gmail.com" }]
 keywords = ["medical-imaging", "dicom", "nifti", "pytorch"]
 classifiers = [
   "Development Status :: 2 - Pre-Alpha",
-  "License :: OSI Approved :: BSD License",
   "Programming Language :: Python :: 3",
   "Programming Language :: Python :: 3.9",
   "Programming Language :: Python :: 3.10",
@@ -34,11 +34,15 @@ all = [
 ]
 
 [project.urls]
-Homepage = "https://github.com/your-username/medical-imaging-toolkit"
-Issues = "https://github.com/your-username/medical-imaging-toolkit/issues"
+Homepage = "https://github.com/Charles-Hu/MedImageFlow"
+Repository = "https://github.com/Charles-Hu/MedImageFlow"
+Issues = "https://github.com/Charles-Hu/MedImageFlow/issues"
+
+[tool.hatch.version]
+path = "src/medimageflow/_version.py"
 
 [tool.hatch.build.targets.wheel]
-packages = ["src/medical_toolkit"]
+packages = ["src/medimageflow"]
 
 [tool.pytest.ini_options]
 addopts = "-ra --strict-markers"

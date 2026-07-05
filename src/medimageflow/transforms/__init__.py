@@ -1,7 +1,7 @@
 """Composable sample transforms."""
 
-from medical_toolkit.transforms.compose import Compose
-from medical_toolkit.transforms.intensity import (
+from medimageflow.transforms.compose import Compose
+from medimageflow.transforms.intensity import (
     MinMaxNormalize,
     NormalizeIntensity,
     ZScoreNormalize,

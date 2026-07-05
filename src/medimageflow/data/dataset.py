@@ -12,7 +12,7 @@ from typing import Any, Protocol, Union
 import numpy as np
 from numpy.typing import NDArray
 
-from medical_toolkit.data.patch import (
+from medimageflow.data.patch import (
     PatchSampler,
     extract_centered_patch,
     full_patch_axes,
@@ -20,7 +20,7 @@ from medical_toolkit.data.patch import (
     patch_start,
     resolve_patch_size,
 )
-from medical_toolkit.data.readers import ImageReader, ReaderRegistry
+from medimageflow.data.readers import ImageReader, ReaderRegistry
 
 SampleDict = dict[str, Any]
 Transform = Callable[[SampleDict], SampleDict]
@@ -176,7 +176,7 @@ class MedicalImageDataset:
         **dataset_options: Any,
     ) -> MedicalImageDataset:
         """Create a dataset backed by lazily converted CSV records."""
-        from medical_toolkit.data.sources import CSVSampleSource
+        from medimageflow.data.sources import CSVSampleSource
 
         source = CSVSampleSource(
             csv_path,
@@ -198,7 +198,7 @@ class MedicalImageDataset:
         **dataset_options: Any,
     ) -> MedicalImageDataset:
         """Create a dataset by matching ``{id}`` path patterns below a root."""
-        from medical_toolkit.data.sources import DirectorySampleSource
+        from medimageflow.data.sources import DirectorySampleSource
 
         return cls(DirectorySampleSource(root, paths=paths), **dataset_options)
 

@@ -8,7 +8,7 @@ from collections.abc import Mapping, Sequence
 from pathlib import Path
 from typing import Any
 
-from medical_toolkit.data.dataset import FieldSelection, Sample
+from medimageflow.data.dataset import FieldSelection, Sample
 
 
 class MappingSampleSource:

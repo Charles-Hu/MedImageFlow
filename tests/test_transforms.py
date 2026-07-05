@@ -1,6 +1,6 @@
 import numpy as np
 
-from medical_toolkit.transforms import Compose, NormalizeIntensity
+from medimageflow.transforms import Compose, NormalizeIntensity
 
 
 def test_normalize_intensity_preserves_zero_background() -> None:

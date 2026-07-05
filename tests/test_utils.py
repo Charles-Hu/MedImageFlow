@@ -1,4 +1,4 @@
-from medical_toolkit.utils import find_files
+from medimageflow.utils import find_files
 
 
 def test_find_files_is_sorted(tmp_path) -> None:

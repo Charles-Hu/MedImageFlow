@@ -4,7 +4,7 @@ from typing import Any
 import numpy as np
 import pytest
 
-from medical_toolkit.data import (
+from medimageflow.data import (
     CSVSampleSource,
     DirectorySampleSource,
     GridPatchSampler,

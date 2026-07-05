@@ -8,7 +8,7 @@ from typing import Any
 import numpy as np
 from numpy.typing import ArrayLike, NDArray
 
-from medical_toolkit.utils.optional import require
+from medimageflow.utils.optional import require
 
 
 def read_nifti(path: str | Path, *, dtype: Any = np.float32) -> tuple[NDArray[Any], NDArray[Any]]:

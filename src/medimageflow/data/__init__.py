@@ -1,6 +1,6 @@
 """Dataset and data loading abstractions."""
 
-from medical_toolkit.data.dataset import (
+from medimageflow.data.dataset import (
     ArrayTransform,
     FeatureTransform,
     FieldSelection,
@@ -9,16 +9,16 @@ from medical_toolkit.data.dataset import (
     Sample,
     SampleSource,
 )
-from medical_toolkit.data.loader import TimedDataLoader, create_dataloader
-from medical_toolkit.data.patch import GridPatchSampler, RandomPatchSampler
-from medical_toolkit.data.readers import (
+from medimageflow.data.loader import TimedDataLoader, create_dataloader
+from medimageflow.data.patch import GridPatchSampler, RandomPatchSampler
+from medimageflow.data.readers import (
     DicomSeriesReader,
     ImageReader,
     NiftiReader,
     NumpyReader,
     ReaderRegistry,
 )
-from medical_toolkit.data.sources import (
+from medimageflow.data.sources import (
     CSVSampleSource,
     DirectorySampleSource,
     MappingSampleSource,
