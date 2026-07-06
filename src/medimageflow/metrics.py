@@ -2,7 +2,9 @@
 
 from __future__ import annotations
 
-from typing import Any
+from collections.abc import Callable, Mapping, Sequence
+from itertools import combinations
+from typing import Any, cast
 
 import numpy as np
 from numpy.typing import ArrayLike, NDArray
@@ -569,7 +571,361 @@ def nmi(
     return float(metrics.normalized_mutual_information(target_array, prediction_array, bins=bins))
 
 
+_PAIR_METRIC_NAMES = frozenset(
+    {
+        "assd",
+        "dice",
+        "gcc",
+        "gradient_mae",
+        "hd95",
+        "iou",
+        "jaccard",
+        "mae",
+        "mse",
+        "ncc",
+        "nmi",
+        "nrmse",
+        "precision",
+        "psnr",
+        "ravd",
+        "sensitivity",
+        "specificity",
+        "ssim",
+    }
+)
+
+_SINGLE_INPUT_METRIC_NAMES = frozenset(
+    {
+        "deformation_magnitude",
+        "deformation_smoothness",
+        "negative_jacobian_percentage",
+    }
+)
+
+MetricCallable = Callable[..., Any]
+
+
+def _resolve_metrics(
+    metrics: str
+    | MetricCallable
+    | Sequence[str | MetricCallable]
+    | Mapping[str, MetricCallable],
+    supported_names: frozenset[str],
+    *,
+    kind: str,
+) -> list[tuple[str, MetricCallable]]:
+    """Resolve built-in metric names and user-provided callables."""
+    if isinstance(metrics, Mapping):
+        resolved = list(metrics.items())
+        if any(not isinstance(name, str) or not name for name, _ in resolved):
+            raise ValueError("custom metric names must be nonempty strings")
+        if any(not callable(metric) for _, metric in resolved):
+            raise TypeError("custom metrics must be callable")
+    else:
+        specs = [metrics] if isinstance(metrics, str) or callable(metrics) else list(metrics)
+        resolved = []
+        unsupported: list[str] = []
+        for spec in specs:
+            if isinstance(spec, str):
+                if spec not in supported_names:
+                    unsupported.append(spec)
+                    continue
+                resolved.append((spec, cast(MetricCallable, globals()[spec])))
+            elif callable(spec):
+                resolved.append((getattr(spec, "__name__", spec.__class__.__name__), spec))
+            else:
+                raise TypeError("metrics must be names, callables, or a name-to-callable mapping")
+        if unsupported:
+            raise ValueError(
+                f"unsupported {kind}metrics: {sorted(unsupported)}; "
+                f"supported metrics: {sorted(supported_names)}"
+            )
+
+    if not resolved:
+        raise ValueError("at least one metric must be selected")
+    names = [name for name, _ in resolved]
+    if len(names) != len(set(names)):
+        raise ValueError("metric names must be unique")
+    return resolved
+
+
+def _as_image_collection(value: ArrayLike | Sequence[ArrayLike]) -> tuple[list[ArrayLike], bool]:
+    """Return image inputs as a list and whether the input is a collection."""
+    if isinstance(value, Sequence) and not isinstance(value, (str, bytes, np.ndarray)):
+        items = list(value)
+        if not items:
+            return [], True
+        if items and all(isinstance(item, np.ndarray) for item in items):
+            return items, True
+    return [value], False
+
+
+def _as_prediction_matrix(
+    value: ArrayLike | Sequence[ArrayLike],
+) -> list[list[ArrayLike]] | None:
+    """Return a rectangular matrix of NumPy arrays when one is provided."""
+    if not isinstance(value, Sequence) or isinstance(value, (str, bytes, np.ndarray)):
+        return None
+    rows = list(value)
+    if not rows:
+        return None
+    matrix: list[list[ArrayLike]] = []
+    for row in rows:
+        if not isinstance(row, Sequence) or isinstance(row, (str, bytes, np.ndarray)):
+            return None
+        items = list(row)
+        if not items or not all(isinstance(item, np.ndarray) for item in items):
+            return None
+        matrix.append(items)
+    model_count = len(matrix[0])
+    if any(len(row) != model_count for row in matrix):
+        raise ValueError("two-dimensional prediction input must be rectangular")
+    return matrix
+
+
+def aggregate_metrics(
+    prediction: ArrayLike | Sequence[ArrayLike],
+    target: ArrayLike | Sequence[ArrayLike],
+    metrics: str
+    | MetricCallable
+    | Sequence[str | MetricCallable]
+    | Mapping[str, MetricCallable],
+    *,
+    metric_kwargs: Mapping[str, Mapping[str, Any]] | None = None,
+    paired_t_test: bool = False,
+    paired_t_test_kwargs: Mapping[str, Any] | None = None,
+) -> dict[str, Any]:
+    """Evaluate selected metrics over one or more prediction/target pairs.
+
+    A single input is paired with every item on the opposite collection. Two
+    collections are paired positionally and must have equal lengths. A rectangular
+    prediction matrix is interpreted as ``[patient][model]`` and paired with one
+    target per patient. Collections should contain NumPy arrays.
+
+    For prediction matrices, ``paired_t_test=True`` compares every pair of
+    models across patients and every pair of patients across models using
+    ``scipy.stats.ttest_rel``. Reported p-values are not corrected for multiple
+    comparisons.
+    """
+    prediction_matrix = _as_prediction_matrix(prediction)
+    targets, target_is_collection = _as_image_collection(target)
+    if not targets:
+        raise ValueError("prediction and target collections must not be empty")
+
+    resolved_metrics = _resolve_metrics(metrics, _PAIR_METRIC_NAMES, kind="")
+    metric_names = [name for name, _ in resolved_metrics]
+
+    matrix_shape: tuple[int, int] | None = None
+    if prediction_matrix is not None:
+        if not target_is_collection or len(prediction_matrix) != len(targets):
+            raise ValueError(
+                "prediction matrix patient count must equal the target collection length"
+            )
+        matrix_shape = (len(prediction_matrix), len(prediction_matrix[0]))
+        indexed_pairs = [
+            (
+                {
+                    "patient_index": patient_index,
+                    "model_index": model_index,
+                    "target_index": patient_index,
+                },
+                prediction_item,
+                targets[patient_index],
+            )
+            for patient_index, row in enumerate(prediction_matrix)
+            for model_index, prediction_item in enumerate(row)
+        ]
+    else:
+        predictions, prediction_is_collection = _as_image_collection(prediction)
+        if not predictions:
+            raise ValueError("prediction and target collections must not be empty")
+        if prediction_is_collection and target_is_collection:
+            if len(predictions) != len(targets):
+                raise ValueError("prediction and target collections must have equal lengths")
+            indexed_pairs = [
+                (
+                    {"prediction_index": index, "target_index": index},
+                    prediction_item,
+                    target_item,
+                )
+                for index, (prediction_item, target_item) in enumerate(
+                    zip(predictions, targets)
+                )
+            ]
+        elif prediction_is_collection:
+            indexed_pairs = [
+                ({"prediction_index": index, "target_index": 0}, prediction_item, targets[0])
+                for index, prediction_item in enumerate(predictions)
+            ]
+        elif target_is_collection:
+            indexed_pairs = [
+                ({"prediction_index": 0, "target_index": index}, predictions[0], target_item)
+                for index, target_item in enumerate(targets)
+            ]
+        else:
+            indexed_pairs = [
+                ({"prediction_index": 0, "target_index": 0}, predictions[0], targets[0])
+            ]
+
+    kwargs_by_metric = {} if metric_kwargs is None else metric_kwargs
+    pair_results: list[dict[str, Any]] = []
+    values_by_metric: dict[str, list[float]] = {name: [] for name in metric_names}
+    matrix_values: dict[str, NDArray[np.float64]] = {}
+    if matrix_shape is not None:
+        matrix_values = {
+            name: np.empty(matrix_shape, dtype=np.float64) for name in metric_names
+        }
+    for indices, prediction_item, target_item in indexed_pairs:
+        values: dict[str, float] = {}
+        for name, metric in resolved_metrics:
+            kwargs = dict(kwargs_by_metric.get(name, {}))
+            value = float(metric(prediction_item, target_item, **kwargs))
+            values[name] = value
+            values_by_metric[name].append(value)
+            if matrix_shape is not None:
+                matrix_values[name][indices["patient_index"], indices["model_index"]] = value
+        pair_results.append({**indices, "metrics": values})
+
+    means = {name: float(np.mean(values)) for name, values in values_by_metric.items()}
+    standard_deviations = {
+        name: float(np.std(values)) for name, values in values_by_metric.items()
+    }
+    result: dict[str, Any] = {
+        "pairs": pair_results,
+        "mean": means,
+        "std": standard_deviations,
+    }
+    if matrix_shape is not None:
+        patient_count, model_count = matrix_shape
+        result["patient_mean"] = [
+            {
+                "patient_index": patient_index,
+                "metrics": {
+                    name: float(np.mean(values[patient_index, :]))
+                    for name, values in matrix_values.items()
+                },
+            }
+            for patient_index in range(patient_count)
+        ]
+        result["patient_std"] = [
+            {
+                "patient_index": patient_index,
+                "metrics": {
+                    name: float(np.std(values[patient_index, :]))
+                    for name, values in matrix_values.items()
+                },
+            }
+            for patient_index in range(patient_count)
+        ]
+        result["model_mean"] = [
+            {
+                "model_index": model_index,
+                "metrics": {
+                    name: float(np.mean(values[:, model_index]))
+                    for name, values in matrix_values.items()
+                },
+            }
+            for model_index in range(model_count)
+        ]
+        result["model_std"] = [
+            {
+                "model_index": model_index,
+                "metrics": {
+                    name: float(np.std(values[:, model_index]))
+                    for name, values in matrix_values.items()
+                },
+            }
+            for model_index in range(model_count)
+        ]
+        if paired_t_test:
+            stats = require("scipy.stats", extra="imaging")
+            test_kwargs = (
+                {} if paired_t_test_kwargs is None else dict(paired_t_test_kwargs)
+            )
+            result["paired_t_test"] = {
+                "models": [
+                    {
+                        "model_indices": (first, second),
+                        "metrics": {
+                            name: {
+                                "statistic": float(test.statistic),
+                                "pvalue": float(test.pvalue),
+                            }
+                            for name, values in matrix_values.items()
+                            for test in [
+                                stats.ttest_rel(
+                                    values[:, first], values[:, second], **test_kwargs
+                                )
+                            ]
+                        },
+                    }
+                    for first, second in combinations(range(model_count), 2)
+                ],
+                "patients": [
+                    {
+                        "patient_indices": (first, second),
+                        "metrics": {
+                            name: {
+                                "statistic": float(test.statistic),
+                                "pvalue": float(test.pvalue),
+                            }
+                            for name, values in matrix_values.items()
+                            for test in [
+                                stats.ttest_rel(
+                                    values[first, :], values[second, :], **test_kwargs
+                                )
+                            ]
+                        },
+                    }
+                    for first, second in combinations(range(patient_count), 2)
+                ],
+            }
+    elif paired_t_test:
+        raise ValueError("paired_t_test is only available for prediction matrices")
+    return result
+
+
+def aggregate_single_input_metrics(
+    inputs: ArrayLike | Sequence[ArrayLike],
+    metrics: str
+    | MetricCallable
+    | Sequence[str | MetricCallable]
+    | Mapping[str, MetricCallable],
+    *,
+    metric_kwargs: Mapping[str, Mapping[str, Any]] | None = None,
+) -> dict[str, Any]:
+    """Evaluate selected single-input metrics over one or more inputs."""
+    input_items, _ = _as_image_collection(inputs)
+    if not input_items:
+        raise ValueError("input collection must not be empty")
+
+    resolved_metrics = _resolve_metrics(
+        metrics, _SINGLE_INPUT_METRIC_NAMES, kind="single-input "
+    )
+    metric_names = [name for name, _ in resolved_metrics]
+
+    kwargs_by_metric = {} if metric_kwargs is None else metric_kwargs
+    item_results: list[dict[str, Any]] = []
+    values_by_metric: dict[str, list[float]] = {name: [] for name in metric_names}
+    for input_index, input_item in enumerate(input_items):
+        values: dict[str, float] = {}
+        for name, metric in resolved_metrics:
+            kwargs = dict(kwargs_by_metric.get(name, {}))
+            value = float(metric(input_item, **kwargs))
+            values[name] = value
+            values_by_metric[name].append(value)
+        item_results.append({"input_index": input_index, "metrics": values})
+
+    means = {name: float(np.mean(values)) for name, values in values_by_metric.items()}
+    standard_deviations = {
+        name: float(np.std(values)) for name, values in values_by_metric.items()
+    }
+    return {"items": item_results, "mean": means, "std": standard_deviations}
+
+
 __all__ = [
+    "aggregate_metrics",
+    "aggregate_single_input_metrics",
     "assd",
     "deformation_magnitude",
     "deformation_smoothness",

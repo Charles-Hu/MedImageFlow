@@ -361,3 +361,261 @@ def test_nmi_wraps_skimage_and_applies_mask(monkeypatch: pytest.MonkeyPatch) -> 
     np.testing.assert_array_equal(calls["arguments"][0], [3, 1])
     np.testing.assert_array_equal(calls["arguments"][1], [1, 3])
     assert calls["arguments"][2] == 32
+
+
+def test_aggregate_metrics_supports_single_pair_and_multiple_metrics() -> None:
+    prediction = np.array([1.0, 2.0])
+    target = np.array([1.0, 4.0])
+
+    result = metrics.aggregate_metrics(prediction, target, ["mae", "gcc"])
+
+    assert result["pairs"][0]["prediction_index"] == 0
+    assert result["pairs"][0]["target_index"] == 0
+    assert result["pairs"][0]["metrics"]["mae"] == 1.0
+    assert result["pairs"][0]["metrics"]["gcc"] == pytest.approx(1.0)
+    assert result["mean"]["mae"] == 1.0
+    assert result["mean"]["gcc"] == pytest.approx(1.0)
+    assert result["std"] == {"mae": 0.0, "gcc": 0.0}
+
+
+def test_aggregate_metrics_supports_one_to_many() -> None:
+    prediction = np.array([0.0, 0.0])
+    targets = [np.array([1.0, 1.0]), np.array([3.0, 3.0])]
+
+    result = metrics.aggregate_metrics(prediction, targets, "mae")
+
+    assert [pair["target_index"] for pair in result["pairs"]] == [0, 1]
+    assert [pair["metrics"]["mae"] for pair in result["pairs"]] == [1.0, 3.0]
+    assert result["mean"]["mae"] == 2.0
+
+
+def test_aggregate_metrics_supports_many_to_one() -> None:
+    predictions = [np.array([1.0]), np.array([3.0])]
+    target = np.array([2.0])
+
+    result = metrics.aggregate_metrics(predictions, target, "mae")
+
+    assert [pair["prediction_index"] for pair in result["pairs"]] == [0, 1]
+    assert result["mean"]["mae"] == 1.0
+
+
+def test_aggregate_metrics_supports_equal_length_many_to_many() -> None:
+    predictions = [np.array([1.0]), np.array([5.0])]
+    targets = [np.array([2.0]), np.array([2.0])]
+
+    result = metrics.aggregate_metrics(predictions, targets, "mae")
+
+    assert [(pair["prediction_index"], pair["target_index"]) for pair in result["pairs"]] == [
+        (0, 0),
+        (1, 1),
+    ]
+    assert result["mean"]["mae"] == 2.0
+
+
+def test_aggregate_metrics_supports_patient_by_model_predictions() -> None:
+    predictions = [
+        [np.array([0.0]), np.array([2.0]), np.array([4.0])],
+        [np.array([10.0]), np.array([12.0]), np.array([14.0])],
+    ]
+    targets = [np.array([0.0]), np.array([10.0])]
+
+    result = metrics.aggregate_metrics(predictions, targets, "mae")
+
+    assert len(result["pairs"]) == 6
+    assert result["pairs"][4] == {
+        "patient_index": 1,
+        "model_index": 1,
+        "target_index": 1,
+        "metrics": {"mae": 2.0},
+    }
+    assert result["mean"] == {"mae": 2.0}
+    assert result["std"]["mae"] == pytest.approx(np.sqrt(8.0 / 3.0))
+    assert result["patient_mean"] == [
+        {"patient_index": 0, "metrics": {"mae": 2.0}},
+        {"patient_index": 1, "metrics": {"mae": 2.0}},
+    ]
+    assert [item["metrics"]["mae"] for item in result["patient_std"]] == pytest.approx(
+        [np.sqrt(8.0 / 3.0), np.sqrt(8.0 / 3.0)]
+    )
+    assert result["model_mean"] == [
+        {"model_index": 0, "metrics": {"mae": 0.0}},
+        {"model_index": 1, "metrics": {"mae": 2.0}},
+        {"model_index": 2, "metrics": {"mae": 4.0}},
+    ]
+    assert [item["metrics"]["mae"] for item in result["model_std"]] == [0.0, 0.0, 0.0]
+
+
+def test_aggregate_metrics_rejects_invalid_prediction_matrix() -> None:
+    target = [np.zeros(1), np.zeros(1)]
+    with pytest.raises(ValueError, match="rectangular"):
+        metrics.aggregate_metrics(
+            [[np.zeros(1)], [np.zeros(1), np.zeros(1)]], target, "mae"
+        )
+    with pytest.raises(ValueError, match="patient count"):
+        metrics.aggregate_metrics([[np.zeros(1)]], target, "mae")
+
+
+def test_aggregate_metrics_runs_optional_paired_t_tests(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    calls: list[tuple[np.ndarray, np.ndarray, dict[str, Any]]] = []
+
+    def ttest_rel(first: np.ndarray, second: np.ndarray, **kwargs: Any) -> Any:
+        calls.append((first, second, kwargs))
+        return SimpleNamespace(statistic=np.sum(first - second), pvalue=0.1)
+
+    monkeypatch.setattr(
+        metrics, "require", lambda *args, **kwargs: SimpleNamespace(ttest_rel=ttest_rel)
+    )
+    predictions = [
+        [np.array([0.0]), np.array([1.0])],
+        [np.array([10.0]), np.array([13.0])],
+    ]
+    targets = [np.array([0.0]), np.array([10.0])]
+
+    result = metrics.aggregate_metrics(
+        predictions,
+        targets,
+        "mae",
+        paired_t_test=True,
+        paired_t_test_kwargs={"alternative": "two-sided"},
+    )
+
+    assert len(calls) == 2
+    np.testing.assert_array_equal(calls[0][0], [0.0, 0.0])
+    np.testing.assert_array_equal(calls[0][1], [1.0, 3.0])
+    assert calls[0][2] == {"alternative": "two-sided"}
+    assert result["paired_t_test"]["models"] == [
+        {
+            "model_indices": (0, 1),
+            "metrics": {"mae": {"statistic": -4.0, "pvalue": 0.1}},
+        }
+    ]
+    assert result["paired_t_test"]["patients"] == [
+        {
+            "patient_indices": (0, 1),
+            "metrics": {"mae": {"statistic": -2.0, "pvalue": 0.1}},
+        }
+    ]
+
+
+def test_aggregate_metrics_only_allows_paired_t_test_for_matrix() -> None:
+    with pytest.raises(ValueError, match="only available"):
+        metrics.aggregate_metrics(np.zeros(2), np.zeros(2), "mae", paired_t_test=True)
+
+
+def test_aggregate_metrics_forwards_metric_specific_kwargs() -> None:
+    prediction = np.array([1.0, 100.0])
+    target = np.array([3.0, 0.0])
+
+    result = metrics.aggregate_metrics(
+        prediction,
+        target,
+        "mae",
+        metric_kwargs={"mae": {"mask": np.array([True, False])}},
+    )
+
+    assert result["mean"]["mae"] == 2.0
+
+
+def test_aggregate_metrics_supports_custom_and_builtin_metrics() -> None:
+    def maximum_error(
+        prediction: np.ndarray, target: np.ndarray, *, scale: float = 1.0
+    ) -> float:
+        return float(np.max(np.abs(prediction - target)) * scale)
+
+    result = metrics.aggregate_metrics(
+        np.array([1.0, 4.0]),
+        np.array([2.0, 2.0]),
+        ["mae", maximum_error],
+        metric_kwargs={"maximum_error": {"scale": 2.0}},
+    )
+
+    assert result["mean"] == {"mae": 1.5, "maximum_error": 4.0}
+
+
+def test_aggregate_metrics_supports_explicit_custom_metric_names() -> None:
+    result = metrics.aggregate_metrics(
+        np.array([1.0]),
+        np.array([4.0]),
+        {"custom_distance": lambda prediction, target: np.abs(prediction - target).mean()},
+    )
+
+    assert result["mean"]["custom_distance"] == 3.0
+
+
+def test_aggregate_metrics_rejects_invalid_requests() -> None:
+    image = np.zeros(2)
+    with pytest.raises(ValueError, match="unsupported metrics"):
+        metrics.aggregate_metrics(image, image, "unknown")
+    with pytest.raises(ValueError, match="equal lengths"):
+        metrics.aggregate_metrics([image, image], [image], "mae")
+
+
+def test_aggregate_single_input_metrics_supports_one_input() -> None:
+    field = np.ones((1, 3, 3, 2), dtype=float)
+
+    result = metrics.aggregate_single_input_metrics(
+        field, ["deformation_magnitude", "deformation_smoothness"]
+    )
+
+    assert result == {
+        "items": [
+            {
+                "input_index": 0,
+                "metrics": {
+                    "deformation_magnitude": 2.0,
+                    "deformation_smoothness": 0.0,
+                },
+            }
+        ],
+        "mean": {"deformation_magnitude": 2.0, "deformation_smoothness": 0.0},
+        "std": {"deformation_magnitude": 0.0, "deformation_smoothness": 0.0},
+    }
+
+
+def test_aggregate_single_input_metrics_supports_input_list_and_mean() -> None:
+    fields = [
+        np.ones((1, 3, 3, 2), dtype=float),
+        np.full((1, 3, 3, 2), 2.0),
+    ]
+
+    result = metrics.aggregate_single_input_metrics(fields, "deformation_magnitude")
+
+    assert [item["input_index"] for item in result["items"]] == [0, 1]
+    assert [item["metrics"]["deformation_magnitude"] for item in result["items"]] == [
+        2.0,
+        8.0,
+    ]
+    assert result["mean"]["deformation_magnitude"] == 5.0
+    assert result["std"]["deformation_magnitude"] == 3.0
+
+
+def test_aggregate_single_input_metrics_forwards_kwargs() -> None:
+    field = np.ones((1, 3, 3, 2), dtype=float)
+    mask = np.zeros((1, 3, 3), dtype=bool)
+    mask[:, :2, :2] = True
+
+    result = metrics.aggregate_single_input_metrics(
+        field,
+        "deformation_magnitude",
+        metric_kwargs={"deformation_magnitude": {"mask": mask}},
+    )
+
+    assert result["mean"]["deformation_magnitude"] == 2.0
+
+
+def test_aggregate_single_input_metrics_supports_custom_metrics() -> None:
+    result = metrics.aggregate_single_input_metrics(
+        [np.array([1.0, 2.0]), np.array([3.0, 4.0])],
+        {"maximum": lambda value, offset=0.0: np.max(value) + offset},
+        metric_kwargs={"maximum": {"offset": 1.0}},
+    )
+
+    assert [item["metrics"]["maximum"] for item in result["items"]] == [3.0, 5.0]
+    assert result["mean"]["maximum"] == 4.0
+
+
+def test_aggregate_single_input_metrics_rejects_pair_metric() -> None:
+    with pytest.raises(ValueError, match="unsupported single-input metrics"):
+        metrics.aggregate_single_input_metrics(np.zeros((1, 3, 3, 2)), "mae")

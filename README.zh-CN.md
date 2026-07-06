@@ -4,7 +4,7 @@
 
 一个面向医学影像研究与模型训练的 path-first Python 工具箱。数据集保存图像路径，
 在取样时读取为 NumPy 数组，并提供多模态数据集、2D/3D patch 采样、PyTorch
-DataLoader 适配，以及基础 DICOM/NIfTI I/O。
+DataLoader 适配、evaluation metrics 与聚合，以及基础 DICOM/NIfTI I/O。
 
 > 当前版本为 `0.1.0`，仍处于早期开发阶段。未经独立验证，请勿将输出用于临床决策。
 
@@ -34,6 +34,8 @@ Patch transform → Dataset → 可选 PyTorch DataLoader
 - **训练与诊断：**接入 PyTorch DataLoader，并可选输出[数据管线耗时](#可选性能计时)。
 - **转换医学影像格式：**使用 [DICOM 与 NIfTI 工具](#dicom-与-nifti)，可选择严格的
   pydicom 转换或 dcm2niix 后端。
+- **评估结果：**计算分割、图像相似性和形变场[指标](#evaluation-metrics)，
+  并按 patient 与模型聚合结果。
 
 请先查看[安装说明](#安装)，再按实际任务跳转到对应章节。用于正式流程前，建议阅读
 [当前限制](#当前限制)。
@@ -46,7 +48,7 @@ Patch transform → Dataset → 可选 PyTorch DataLoader
 # 从 PyPI 安装核心功能（仅依赖 NumPy）
 python -m pip install medimageflow
 
-# DICOM / NIfTI
+# DICOM、NIfTI 与 evaluation metrics
 python -m pip install "medimageflow[imaging]"
 
 # PyTorch DataLoader
@@ -590,6 +592,120 @@ write_nifti(volume, affine, "outputs/scan-copy.nii.gz")
 NIfTI 读写基于 nibabel。`read_nifti` 返回 `(volume, affine)`，默认将 volume 读取为
 `float32`；写入时 affine 必须是 `4 x 4`。
 
+## Evaluation Metrics
+
+使用 SimpleITK、scikit-image、MedPy 和 SciPy 后端的指标前，需安装
+`imaging` 可选依赖。所有公开函数均为 evaluation metric，不提供训练 loss。
+
+| 类别 | 指标 |
+| --- | --- |
+| 分割与边界 | `dice`、`jaccard`/`iou`、`hd95`、`assd`、`sensitivity`、`specificity`、`precision`、`ravd` |
+| 图像相似性与误差 | `ssim`、`psnr`、`mae`、`mse`、`nrmse`、`nmi`、`gcc`、`ncc`、`gradient_mae` |
+| 形变场质量 | `negative_jacobian_percentage`、`deformation_smoothness`、`deformation_magnitude` |
+
+成对指标接收 NumPy 兼容的 prediction 和 target 数组。每个成对指标都支持可选
+布尔 `mask`，仅选中元素参与计算。同时保留 `label`、`data_range`、
+`voxelspacing`、`connectivity` 和局部 NCC 窗口等指标专用参数。
+
+```python
+from medimageflow.metrics import dice, hd95, ssim
+
+dice_score = dice(prediction_label, target_label, label=1, mask=roi)
+surface_distance = hd95(
+    prediction_label,
+    target_label,
+    voxelspacing=(1.0, 1.0, 2.5),
+    mask=roi,
+)
+structural_similarity = ssim(prediction_image, target_image, data_range=1.0, mask=roi)
+```
+
+`gcc` 返回约位于 `[-1, 1]` 的全局归一化互相关；`ncc` 返回局部归一化互相关
+平方的均值，二者均是越大越好。`gradient_mae`、MAE/MSE/NRMSE、
+HD95/ASSD、RAVD、smoothness 和 magnitude 是误差或距离类指标，通常越小越好。
+
+形变场指标支持 2D/3D 及 component-first/component-last 布局。
+`negative_jacobian_percentage` 期望归一化坐标形变网格，返回行列式小于零的
+体素百分比。Smoothness 和 magnitude 返回形变场原始正则性统计量。
+
+### 指标聚合
+
+`aggregate_metrics` 支持单对单、单对多、多对单和两个等长 list。它可同时计算一个或
+多个内置/自定义指标，返回每个 pair 的结果以及总体 population mean 和
+standard deviation（`ddof=0`）。
+
+```python
+from medimageflow.metrics import aggregate_metrics
+
+summary = aggregate_metrics(
+    predictions,
+    targets,
+    ["dice", "hd95"],
+    metric_kwargs={
+        "dice": {"label": 1, "mask": roi},
+        "hd95": {"voxelspacing": (1.0, 1.0, 2.5), "mask": roi},
+    },
+)
+
+summary["pairs"]
+summary["mean"]
+summary["std"]
+```
+
+二维 prediction 使用 `[patient][model]` 布局，并与每个 patient 的一个 target 配对。
+除 overall `mean` 和 `std` 外，返回值还包含 `patient_mean`、`patient_std`、
+`model_mean` 和 `model_std`。
+
+```python
+# 10 个 patient，每个 patient 有 5 个模型结果
+predictions = [[model_output[p][m] for m in range(5)] for p in range(10)]
+
+summary = aggregate_metrics(predictions, targets, ["dice", "hd95"])
+summary["model_mean"]
+summary["patient_mean"]
+```
+
+Paired t-test 默认关闭。对二维 prediction 显式开启后，使用 `scipy.stats.ttest_rel`
+比较模型对（按 patient 配对）和 patient 对（按模型配对）：
+
+```python
+summary = aggregate_metrics(
+    predictions,
+    targets,
+    "dice",
+    paired_t_test=True,
+    paired_t_test_kwargs={"alternative": "two-sided", "nan_policy": "omit"},
+)
+
+summary["paired_t_test"]["models"]
+summary["paired_t_test"]["patients"]
+```
+
+返回的 p-value 未执行多重比较校正。
+
+单输入形变场指标使用 `aggregate_single_input_metrics`，返回每个 input 的结果以及
+overall `mean` 和 `std`：
+
+```python
+from medimageflow.metrics import aggregate_single_input_metrics
+
+deformation_summary = aggregate_single_input_metrics(
+    deformation_fields,
+    ["negative_jacobian_percentage", "deformation_magnitude"],
+)
+```
+
+两个聚合器都支持直接传入 callable、混合使用内置名称与 callable，或使用显式
+`{name: callable}` 映射。`metric_kwargs` 使用最终指标名称作为 key。
+
+```python
+custom_summary = aggregate_metrics(
+    predictions,
+    targets,
+    {"maximum_error": lambda prediction, target: abs(prediction - target).max()},
+)
+```
+
 ## 其他工具
 
 ```python
@@ -614,6 +730,7 @@ mypy src
 src/medimageflow/
 ├── data/        # reader、Dataset、DataLoader、patch 采样与裁剪
 ├── io/          # DICOM / NIfTI
+├── metrics.py   # evaluation metrics 与聚合
 ├── transforms/  # 组合与强度变换
 └── utils/       # 文件和可选依赖工具
 ```

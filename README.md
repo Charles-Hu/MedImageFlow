@@ -4,7 +4,8 @@
 
 A path-first Python toolkit for medical imaging research and model training. It
 provides multimodal datasets, synchronized 2D/3D patch extraction, PyTorch
-DataLoader integration, optional profiling, and basic DICOM/NIfTI I/O.
+DataLoader integration, evaluation metrics and aggregation, optional profiling,
+and basic DICOM/NIfTI I/O.
 
 > Version `0.1.0` is an early-stage release. Do not use unvalidated outputs for
 > clinical decisions.
@@ -38,6 +39,8 @@ Main capabilities:
   [report pipeline timing](#optional-performance-timing).
 - **Convert medical formats:** use the [DICOM and NIfTI tools](#dicom-and-nifti-io),
   including strict pydicom conversion or a dcm2niix backend.
+- **Evaluate results:** calculate segmentation, image-similarity, and deformation-field
+  [metrics](#evaluation-metrics), then aggregate patients and models.
 
 Start with [installation](#installation), then choose the detailed section
 matching your workflow. Before production use, review the
@@ -51,7 +54,7 @@ Python 3.9 or later is required.
 # Core package and NumPy from PyPI
 python -m pip install medimageflow
 
-# DICOM and NIfTI support
+# DICOM, NIfTI, and evaluation-metric support
 python -m pip install "medimageflow[imaging]"
 
 # PyTorch DataLoader support
@@ -519,6 +522,127 @@ list with this backend.
 `read_nifti` returns `(volume, affine)` and reads volume data as `float32` by
 default. `write_nifti` requires a 4-by-4 affine matrix.
 
+## Evaluation Metrics
+
+Install the `imaging` extra to use metrics backed by SimpleITK, scikit-image,
+MedPy, and SciPy. All public functions are evaluation metrics rather than
+training losses.
+
+| Category | Metrics |
+| --- | --- |
+| Segmentation and boundary | `dice`, `jaccard`/`iou`, `hd95`, `assd`, `sensitivity`, `specificity`, `precision`, `ravd` |
+| Image similarity and error | `ssim`, `psnr`, `mae`, `mse`, `nrmse`, `nmi`, `gcc`, `ncc`, `gradient_mae` |
+| Deformation quality | `negative_jacobian_percentage`, `deformation_smoothness`, `deformation_magnitude` |
+
+Pair metrics accept NumPy-compatible prediction and target arrays. Every pair
+metric accepts an optional boolean `mask`; only selected elements contribute to
+the reported value. Metric-specific arguments remain available, including
+`label`, `data_range`, `voxelspacing`, `connectivity`, and the local NCC window.
+
+```python
+from medimageflow.metrics import dice, hd95, ssim
+
+dice_score = dice(prediction_label, target_label, label=1, mask=roi)
+surface_distance = hd95(
+    prediction_label,
+    target_label,
+    voxelspacing=(1.0, 1.0, 2.5),
+    mask=roi,
+)
+structural_similarity = ssim(prediction_image, target_image, data_range=1.0, mask=roi)
+```
+
+`gcc` reports global normalized cross correlation in approximately `[-1, 1]`.
+`ncc` reports mean squared local normalized cross correlation, where higher is
+better. `gradient_mae`, MAE/MSE/NRMSE, HD95/ASSD, RAVD, smoothness, and magnitude
+are error or distance measures where lower is generally better.
+
+Deformation metrics support 2D and 3D fields in component-first or
+component-last layout. `negative_jacobian_percentage` expects a normalized
+coordinate deformation grid and reports the percentage of determinants below
+zero. Smoothness and magnitude report raw field regularity statistics.
+
+### Metric aggregation
+
+`aggregate_metrics` accepts one prediction and one target, one-to-many,
+many-to-one, or two equal-length lists. It evaluates one or more built-in or
+custom metrics and returns every pair plus overall population mean and standard
+deviation (`ddof=0`).
+
+```python
+from medimageflow.metrics import aggregate_metrics
+
+summary = aggregate_metrics(
+    predictions,
+    targets,
+    ["dice", "hd95"],
+    metric_kwargs={
+        "dice": {"label": 1, "mask": roi},
+        "hd95": {"voxelspacing": (1.0, 1.0, 2.5), "mask": roi},
+    },
+)
+
+summary["pairs"]
+summary["mean"]
+summary["std"]
+```
+
+A rectangular prediction input uses `[patient][model]` layout and is paired
+with one target per patient. In addition to overall `mean` and `std`, the result
+contains `patient_mean`, `patient_std`, `model_mean`, and `model_std`.
+
+```python
+# Ten patients, each evaluated with five models.
+predictions = [[model_output[p][m] for m in range(5)] for p in range(10)]
+
+summary = aggregate_metrics(predictions, targets, ["dice", "hd95"])
+summary["model_mean"]
+summary["patient_mean"]
+```
+
+Paired t-tests are deliberately disabled by default. For a prediction matrix,
+enable them to compare model pairs across patients and patient pairs across
+models with `scipy.stats.ttest_rel`:
+
+```python
+summary = aggregate_metrics(
+    predictions,
+    targets,
+    "dice",
+    paired_t_test=True,
+    paired_t_test_kwargs={"alternative": "two-sided", "nan_policy": "omit"},
+)
+
+summary["paired_t_test"]["models"]
+summary["paired_t_test"]["patients"]
+```
+
+The returned p-values are not corrected for multiple comparisons.
+
+Single-input deformation metrics use `aggregate_single_input_metrics`, which
+returns per-input values plus overall `mean` and `std`:
+
+```python
+from medimageflow.metrics import aggregate_single_input_metrics
+
+deformation_summary = aggregate_single_input_metrics(
+    deformation_fields,
+    ["negative_jacobian_percentage", "deformation_magnitude"],
+)
+```
+
+Both aggregators accept a callable directly, a mixture of built-in names and
+callables, or an explicit `{name: callable}` mapping. `metric_kwargs` is keyed
+by the final metric name.
+
+```python
+custom_summary = aggregate_metrics(
+    predictions,
+    targets,
+    {"maximum_error": lambda prediction, target: abs(prediction - target).max()},
+)
+```
+
 ## Utilities
 
 ```python
@@ -539,6 +663,7 @@ mypy src
 src/medimageflow/
 ├── data/        # readers, datasets, DataLoader, sampling, and extraction
 ├── io/          # DICOM and NIfTI
+├── metrics.py   # evaluation metrics and aggregation
 ├── transforms/  # composition and intensity transforms
 └── utils/       # file and optional-dependency helpers
 ```
