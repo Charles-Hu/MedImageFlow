@@ -17,6 +17,7 @@ dist/
 .vscode/
 outputs/
 DEVELOPMENT_PLAN.local.md
+DEVELOPMENT_LOGS.local/
 *.dcm
 *.nii
 *.nii.gz
