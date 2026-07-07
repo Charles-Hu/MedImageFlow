@@ -1,7 +1,11 @@
 import numpy as np
 import pytest
 
-from medimageflow import mip_visualization, visualization
+from medimageflow import (
+    mip_visualization,
+    registration_field_visualization,
+    visualization,
+)
 
 matplotlib = pytest.importorskip("matplotlib")
 matplotlib.use("Agg")
@@ -90,3 +94,42 @@ def test_mip_visualization_uses_physical_extent() -> None:
     assert axes[1].images[0].get_extent() == (0.0, 36.0, 10.0, 0.0)
     assert axes[2].images[0].get_extent() == (0.0, 21.0, 10.0, 0.0)
     figure.clear()
+
+
+def test_registration_field_visualization_displays_one_2d_grid() -> None:
+    figure, axes = registration_field_visualization(
+        np.zeros((2, 20, 30)), grid_shape=(5, 6), show=False
+    )
+
+    assert len(axes) == 1
+    assert len(axes[0].collections) == 2
+    figure.clear()
+
+
+def test_registration_field_visualization_displays_three_3d_grids() -> None:
+    figure, axes = registration_field_visualization(
+        np.zeros((3, 10, 20, 30)), grid_shape=(4, 5, 6), show=False
+    )
+
+    assert len(axes) == 3
+    assert [len(axis.collections) for axis in axes] == [2, 2, 2]
+    figure.clear()
+
+
+def test_registration_field_visualization_uses_custom_slice_indices() -> None:
+    field = np.zeros((3, 5, 7, 9))
+    field[2, 1, :, :] = 4.0
+    figure, axes = registration_field_visualization(
+        field, grid_shape=3, slice_indices=(1, 2, 3), show=False
+    )
+
+    first_horizontal_line = axes[0].collections[0].get_segments()[0]
+    assert first_horizontal_line[0, 0] == pytest.approx(4.0)
+    figure.clear()
+
+
+def test_registration_field_visualization_rejects_invalid_slice_index() -> None:
+    with pytest.raises(ValueError, match="out of bounds"):
+        registration_field_visualization(
+            np.zeros((3, 5, 7, 9)), slice_indices=(5, 2, 3), show=False
+        )

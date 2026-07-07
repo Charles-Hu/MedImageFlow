@@ -73,7 +73,11 @@ python -m pip install -e ".[all,dev]"
 `show=False`，由调用方控制何时显示。
 
 ```python
-from medimageflow import mip_visualization, visualization
+from medimageflow import (
+    mip_visualization,
+    registration_field_visualization,
+    visualization,
+)
 
 # 使用 voxel 坐标显示 3D volume 的三个中心截面。
 figure, axes = visualization(volume)
@@ -94,6 +98,13 @@ figure, axes = mip_visualization(
     spacing=(2.5, 0.8, 0.8),
     figure_name="case-001 MIP",
 )
+
+# 在用户指定的三个正交平面上绘制 registration field 变形网格。
+figure, axes = registration_field_visualization(
+    field,
+    spacing=(2.5, 0.8, 0.8),
+    slice_indices=(20, 64, 64),
+)
 ```
 
 `visualization` 支持 `(H, W)`、`(H, W, 3/4)`、`(D, H, W)` 和
@@ -104,6 +115,12 @@ figure, axes = mip_visualization(
 2D spacing 顺序为 `(row, column)`，3D spacing 顺序为
 `(axis_0, axis_1, axis_2)`。提供 spacing 时，坐标与图像比例按照真实物理尺寸显示；
 不提供时使用 pixel 或 voxel 坐标。
+
+`registration_field_visualization` 默认接受 component-first 的 `(2, H, W)` 或
+`(3, D, H, W)` displacement field；component-last 数据可设置 `component_axis=-1`。
+2D field 显示一张变形网格，3D field 显示三个正交平面的变形网格。
+`slice_indices` 按 `(axis_0, axis_1, axis_2)` 顺序指定三个平面的位置，默认均取对应
+轴的中心。
 
 ## 数据模型
 

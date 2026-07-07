@@ -80,7 +80,11 @@ Both functions return `(figure, axes)`, accept an optional `figure_name`, and
 can defer display with `show=False`.
 
 ```python
-from medimageflow import mip_visualization, visualization
+from medimageflow import (
+    mip_visualization,
+    registration_field_visualization,
+    visualization,
+)
 
 # Displays the three central slices in voxel coordinates.
 figure, axes = visualization(volume)
@@ -93,6 +97,13 @@ figure, axes = visualization(rgb_image, figure_name="case-001")
 
 # A 3D volume can also be displayed as three maximum-intensity projections.
 figure, axes = mip_visualization(volume, spacing=(2.5, 0.8, 0.8))
+
+# Draw deformed grids on three user-selected planes of a 3D field.
+figure, axes = registration_field_visualization(
+    field,
+    spacing=(2.5, 0.8, 0.8),
+    slice_indices=(20, 64, 64),
+)
 ```
 
 `visualization` supports `(H, W)`, `(H, W, 3/4)`, `(D, H, W)`, and
@@ -105,6 +116,12 @@ Spacing follows array-axis order: `(row, column)` for 2D images and
 `(axis_0, axis_1, axis_2)` for 3D volumes. When supplied, it controls the axes'
 physical coordinates and aspect ratios; otherwise pixel or voxel coordinates
 are used.
+
+`registration_field_visualization` accepts `(2, H, W)` or `(3, D, H, W)`
+component-first displacement fields by default. Use `component_axis=-1` for
+component-last fields. It draws one deformed grid for 2D fields and three
+orthogonal grids for 3D fields. `slice_indices` selects each 3D plane in
+`(axis_0, axis_1, axis_2)` order and defaults to the center of every axis.
 
 ## Sample Model
 
