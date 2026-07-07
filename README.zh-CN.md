@@ -36,6 +36,8 @@ Patch transform → Dataset → 可选 PyTorch DataLoader
   pydicom 转换或 dcm2niix 后端。
 - **评估结果：**计算分割、图像相似性和形变场[指标](#evaluation-metrics)，
   并按 patient 与模型聚合结果。
+- **可视化图像：**显示 2D 灰度或 RGB 图像，以及 3D volume 的三个中心截面或
+  最大强度投影（MIP），并可选择使用真实物理 spacing。
 
 请先查看[安装说明](#安装)，再按实际任务跳转到对应章节。用于正式流程前，建议阅读
 [当前限制](#当前限制)。
@@ -54,12 +56,54 @@ python -m pip install "medimageflow[imaging]"
 # PyTorch DataLoader
 python -m pip install "medimageflow[torch]"
 
+# 基于 Matplotlib 的 2D/3D 可视化
+python -m pip install "medimageflow[visualization]"
+
 # 全部运行时功能
 python -m pip install "medimageflow[all]"
 
 # 从源码进行可编辑安装并加入开发工具
 python -m pip install -e ".[all,dev]"
 ```
+
+## 图像可视化
+
+可视化功能基于 Matplotlib，需要安装 `visualization` extra。两个函数都返回
+`(figure, axes)`，支持通过 `figure_name` 指定 figure 名称，也可以设置
+`show=False`，由调用方控制何时显示。
+
+```python
+from medimageflow import mip_visualization, visualization
+
+# 使用 voxel 坐标显示 3D volume 的三个中心截面。
+figure, axes = visualization(volume)
+
+# spacing 按数组轴顺序传入，坐标轴显示真实物理坐标。
+figure, axes = visualization(
+    volume,
+    spacing=(2.5, 0.8, 0.8),
+    figure_name="case-001 slices",
+)
+
+# channels-last RGB 图像作为一张 2D 图像显示。
+figure, axes = visualization(rgb_image, figure_name="case-001 RGB")
+
+# 分别沿三个空间轴显示最大强度投影。
+figure, axes = mip_visualization(
+    volume,
+    spacing=(2.5, 0.8, 0.8),
+    figure_name="case-001 MIP",
+)
+```
+
+`visualization` 支持 `(H, W)`、`(H, W, 3/4)`、`(D, H, W)` 和
+`(D, H, W, 3/4)`。输入 3D volume 时，函数显示垂直于三个空间轴的中心截面。
+`mip_visualization` 只接受 `(D, H, W)` 或 `(D, H, W, 3/4)` volume，分别沿三个
+空间轴计算 MIP。RGB/RGBA 数据必须采用 channels-last 布局。
+
+2D spacing 顺序为 `(row, column)`，3D spacing 顺序为
+`(axis_0, axis_1, axis_2)`。提供 spacing 时，坐标与图像比例按照真实物理尺寸显示；
+不提供时使用 pixel 或 voxel 坐标。
 
 ## 数据模型
 

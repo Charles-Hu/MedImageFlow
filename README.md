@@ -41,6 +41,9 @@ Main capabilities:
   including strict pydicom conversion or a dcm2niix backend.
 - **Evaluate results:** calculate segmentation, image-similarity, and deformation-field
   [metrics](#evaluation-metrics), then aggregate patients and models.
+- **Visualize images:** display a 2D grayscale/RGB image or the three central
+  slice or maximum-intensity-projection views of a 3D volume with optional
+  physical spacing.
 
 Start with [installation](#installation), then choose the detailed section
 matching your workflow. Before production use, review the
@@ -60,12 +63,48 @@ python -m pip install "medimageflow[imaging]"
 # PyTorch DataLoader support
 python -m pip install "medimageflow[torch]"
 
+# Matplotlib-based 2D/3D visualization
+python -m pip install "medimageflow[visualization]"
+
 # All runtime features
 python -m pip install "medimageflow[all]"
 
 # Editable source installation with development tools
 python -m pip install -e ".[all,dev]"
 ```
+
+## Visualization
+
+Install the `visualization` extra to use the Matplotlib-backed display helpers.
+Both functions return `(figure, axes)`, accept an optional `figure_name`, and
+can defer display with `show=False`.
+
+```python
+from medimageflow import mip_visualization, visualization
+
+# Displays the three central slices in voxel coordinates.
+figure, axes = visualization(volume)
+
+# spacing follows the array axes and displays physical coordinates.
+figure, axes = visualization(volume, spacing=(2.5, 0.8, 0.8))
+
+# A channels-last RGB image is displayed as one 2D image.
+figure, axes = visualization(rgb_image, figure_name="case-001")
+
+# A 3D volume can also be displayed as three maximum-intensity projections.
+figure, axes = mip_visualization(volume, spacing=(2.5, 0.8, 0.8))
+```
+
+`visualization` supports `(H, W)`, `(H, W, 3/4)`, `(D, H, W)`, and
+`(D, H, W, 3/4)`. For a 3D volume, it displays the central slice perpendicular
+to each spatial axis. `mip_visualization` accepts only `(D, H, W)` and
+`(D, H, W, 3/4)` volumes and calculates one maximum-intensity projection along
+each spatial axis. RGB/RGBA data must use channels-last layout.
+
+Spacing follows array-axis order: `(row, column)` for 2D images and
+`(axis_0, axis_1, axis_2)` for 3D volumes. When supplied, it controls the axes'
+physical coordinates and aspect ratios; otherwise pixel or voxel coordinates
+are used.
 
 ## Sample Model
 
