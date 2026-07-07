@@ -8,7 +8,6 @@ def require(module: str, *, extra: str) -> ModuleType:
     Args:
         module: Fully qualified module name.
         extra: Project extra that installs the dependency.
-
     Returns:
         The imported module.
 

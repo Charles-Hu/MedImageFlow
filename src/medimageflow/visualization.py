@@ -22,7 +22,7 @@ def _spacing(spacing: Sequence[float] | None, ndim: int) -> tuple[float, ...] | 
     return values
 
 
-def _extent(shape: tuple[int, int], spacing: tuple[float, float] | None) -> Any:
+def _extent(shape: tuple[int, int], spacing: Sequence[float] | None) -> Any:
     if spacing is None:
         return None
     height, width = shape
