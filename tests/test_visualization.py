@@ -58,9 +58,15 @@ def test_visualization_uses_physical_extent() -> None:
     image = np.zeros((5, 7, 9))
     figure, axes = visualization(image, spacing=(2.0, 3.0, 4.0), show=False)
 
-    assert axes[0].images[0].get_extent() == (0.0, 36.0, 21.0, 0.0)
-    assert axes[1].images[0].get_extent() == (0.0, 36.0, 10.0, 0.0)
-    assert axes[2].images[0].get_extent() == (0.0, 21.0, 10.0, 0.0)
+    np.testing.assert_allclose(
+        axes[0].images[0].get_extent(), (0.0, 36.0, 21.0, 0.0)
+    )
+    np.testing.assert_allclose(
+        axes[1].images[0].get_extent(), (0.0, 36.0, 10.0, 0.0)
+    )
+    np.testing.assert_allclose(
+        axes[2].images[0].get_extent(), (0.0, 21.0, 10.0, 0.0)
+    )
     figure.clear()
 
 
@@ -90,9 +96,15 @@ def test_mip_visualization_uses_physical_extent() -> None:
         np.zeros((5, 7, 9)), spacing=(2.0, 3.0, 4.0), show=False
     )
 
-    assert axes[0].images[0].get_extent() == (0.0, 36.0, 21.0, 0.0)
-    assert axes[1].images[0].get_extent() == (0.0, 36.0, 10.0, 0.0)
-    assert axes[2].images[0].get_extent() == (0.0, 21.0, 10.0, 0.0)
+    np.testing.assert_allclose(
+        axes[0].images[0].get_extent(), (0.0, 36.0, 21.0, 0.0)
+    )
+    np.testing.assert_allclose(
+        axes[1].images[0].get_extent(), (0.0, 36.0, 10.0, 0.0)
+    )
+    np.testing.assert_allclose(
+        axes[2].images[0].get_extent(), (0.0, 21.0, 10.0, 0.0)
+    )
     figure.clear()
 
 

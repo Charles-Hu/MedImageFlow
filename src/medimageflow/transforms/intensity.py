@@ -16,6 +16,15 @@ class MinMaxNormalize:
     clip: bool = True
     epsilon: float = 1e-8
 
+    def __post_init__(self) -> None:
+        """Validate configured fixed intensity bounds."""
+        if (
+            self.minimum is not None
+            and self.maximum is not None
+            and self.maximum <= self.minimum
+        ):
+            raise ValueError("maximum must be greater than minimum")
+
     def __call__(self, array: NDArray[Any]) -> NDArray[Any]:
         """Apply min-max normalization to an array.
 

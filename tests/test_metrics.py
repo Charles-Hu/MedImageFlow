@@ -121,30 +121,30 @@ def _identity_deformation(size: int = 3) -> np.ndarray:
     return np.stack((width, height, depth), axis=-1)[None, ...]
 
 
-def test_negative_jacobian_percentage_for_identity_and_fold() -> None:
+def test_negative_jacobian_percentage_from_grid_for_identity_and_fold() -> None:
     identity = _identity_deformation()
     folded = identity.copy()
     folded[..., 0] *= -1.0
 
-    assert metrics.negative_jacobian_percentage(identity) == 0.0
-    assert metrics.negative_jacobian_percentage(folded) == 100.0
+    assert metrics.negative_jacobian_percentage_from_grid(identity) == 0.0
+    assert metrics.negative_jacobian_percentage_from_grid(folded) == 100.0
 
 
-def test_negative_jacobian_supports_component_first_and_mask() -> None:
+def test_negative_jacobian_from_grid_supports_component_first_and_mask() -> None:
     folded = _identity_deformation(size=4)
     folded[..., 0] *= -1.0
     component_first = np.moveaxis(folded, -1, 1)
     mask = np.zeros((1, 4, 4, 4), dtype=bool)
     mask[:, :-1, :-1, :-1] = True
 
-    result = metrics.negative_jacobian_percentage(component_first, mask=mask)
+    result = metrics.negative_jacobian_percentage_from_grid(component_first, mask=mask)
 
     assert result == 100.0
 
 
 def test_negative_jacobian_rejects_invalid_mask() -> None:
     with pytest.raises(ValueError, match="mask must match"):
-        metrics.negative_jacobian_percentage(
+        metrics.negative_jacobian_percentage_from_grid(
             _identity_deformation(), mask=np.ones((2, 2), dtype=bool)
         )
 
@@ -155,23 +155,47 @@ def _identity_deformation_2d(size: int = 4) -> np.ndarray:
     return np.stack((width, height), axis=-1)[None, ...]
 
 
-def test_negative_jacobian_percentage_supports_2d_deformations() -> None:
+def test_negative_jacobian_percentage_from_grid_supports_2d_deformations() -> None:
     identity = _identity_deformation_2d()
     folded = identity.copy()
     folded[..., 0] *= -1.0
 
-    assert metrics.negative_jacobian_percentage(identity) == 0.0
-    assert metrics.negative_jacobian_percentage(folded) == 100.0
-    assert metrics.negative_jacobian_percentage(np.moveaxis(folded, -1, 1)) == 100.0
+    assert metrics.negative_jacobian_percentage_from_grid(identity) == 0.0
+    assert metrics.negative_jacobian_percentage_from_grid(folded) == 100.0
+    assert (
+        metrics.negative_jacobian_percentage_from_grid(np.moveaxis(folded, -1, 1))
+        == 100.0
+    )
 
 
-def test_negative_jacobian_percentage_supports_2d_mask() -> None:
+def test_negative_jacobian_percentage_from_grid_supports_2d_mask() -> None:
     folded = _identity_deformation_2d()
     folded[..., 0] *= -1.0
     mask = np.zeros((1, 4, 4), dtype=bool)
     mask[:, :-1, :-1] = True
 
-    assert metrics.negative_jacobian_percentage(folded, mask=mask) == 100.0
+    assert metrics.negative_jacobian_percentage_from_grid(folded, mask=mask) == 100.0
+
+
+def test_negative_jacobian_percentage_from_displacement_for_identity_and_fold() -> None:
+    identity_displacement = np.zeros((1, 4, 4, 2), dtype=float)
+    folded_displacement = identity_displacement.copy()
+    folded_displacement[..., 0] = -2.0 * np.arange(4)[None, None, :]
+
+    assert (
+        metrics.negative_jacobian_percentage_from_displacement(identity_displacement)
+        == 0.0
+    )
+    assert (
+        metrics.negative_jacobian_percentage_from_displacement(folded_displacement)
+        == 100.0
+    )
+    assert (
+        metrics.negative_jacobian_percentage_from_displacement(
+            np.moveaxis(folded_displacement, -1, 1)
+        )
+        == 100.0
+    )
 
 
 @pytest.mark.parametrize("dimensions", [2, 3])
@@ -336,6 +360,14 @@ def test_intensity_error_metrics_apply_mask(monkeypatch: pytest.MonkeyPatch) -> 
     assert metrics.nrmse(prediction, target, normalization="min-max", mask=mask) == 0.4
     np.testing.assert_array_equal(calls["mse"][0], [3.0, 5.0])
     assert calls["nrmse"][2] == "min-max"
+
+
+def test_mae_avoids_unsigned_integer_overflow() -> None:
+    prediction = np.array([255], dtype=np.uint8)
+    target = np.array([0], dtype=np.uint8)
+
+    assert metrics.mae(prediction, target) == 255.0
+    assert metrics.mae(target, prediction) == 255.0
 
 
 def test_nmi_wraps_skimage_and_applies_mask(monkeypatch: pytest.MonkeyPatch) -> None:

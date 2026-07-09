@@ -495,6 +495,13 @@ Built-in readers:
 - `DicomSeriesReader`: a directory containing one DICOM series, requiring
   SimpleITK.
 
+Reader array order follows the backend that materializes the array. `NiftiReader`
+returns nibabel data in NIfTI array order, typically `(X, Y, Z)`.
+`DicomSeriesReader` returns `sitk.GetArrayFromImage(...)` output in SimpleITK
+array order, `(Z, Y, X)`. The readers currently return only arrays, not affine,
+spacing, origin, or direction metadata; use the lower-level I/O functions when
+spatial metadata matters.
+
 Custom formats can implement the `ImageReader` protocol:
 
 ```python
@@ -578,6 +585,11 @@ list with this backend.
 `read_nifti` returns `(volume, affine)` and reads volume data as `float32` by
 default. `write_nifti` requires a 4-by-4 affine matrix.
 
+Be explicit about array axis order when mixing DICOM and NIfTI paths:
+`read_nifti` returns nibabel data in NIfTI array order, while
+`read_dicom_series` returns a SimpleITK image and `DicomSeriesReader` materializes
+that image as a `(Z, Y, X)` NumPy array with `sitk.GetArrayFromImage`.
+
 ## Evaluation Metrics
 
 Install the `imaging` extra to use metrics backed by SimpleITK, scikit-image,
@@ -588,7 +600,7 @@ training losses.
 | --- | --- |
 | Segmentation and boundary | `dice`, `jaccard`/`iou`, `hd95`, `assd`, `sensitivity`, `specificity`, `precision`, `ravd` |
 | Image similarity and error | `ssim`, `psnr`, `mae`, `mse`, `nrmse`, `nmi`, `gcc`, `ncc`, `gradient_mae` |
-| Deformation quality | `negative_jacobian_percentage`, `deformation_smoothness`, `deformation_magnitude` |
+| Deformation quality | `negative_jacobian_percentage_from_grid`, `negative_jacobian_percentage_from_displacement`, `deformation_smoothness`, `deformation_magnitude` |
 
 Pair metrics accept NumPy-compatible prediction and target arrays. Every pair
 metric accepts an optional boolean `mask`; only selected elements contribute to
@@ -614,9 +626,10 @@ better. `gradient_mae`, MAE/MSE/NRMSE, HD95/ASSD, RAVD, smoothness, and magnitud
 are error or distance measures where lower is generally better.
 
 Deformation metrics support 2D and 3D fields in component-first or
-component-last layout. `negative_jacobian_percentage` expects a normalized
-coordinate deformation grid and reports the percentage of determinants below
-zero. Smoothness and magnitude report raw field regularity statistics.
+component-last layout. `negative_jacobian_percentage_from_grid` expects a
+normalized coordinate grid in `[-1, 1]`. `negative_jacobian_percentage_from_displacement`
+expects a displacement field and evaluates `phi(x) = x + u(x)`. Smoothness and
+magnitude report raw field regularity statistics.
 
 ### Metric aggregation
 
@@ -683,7 +696,7 @@ from medimageflow.metrics import aggregate_single_input_metrics
 
 deformation_summary = aggregate_single_input_metrics(
     deformation_fields,
-    ["negative_jacobian_percentage", "deformation_magnitude"],
+    ["negative_jacobian_percentage_from_displacement", "deformation_magnitude"],
 )
 ```
 

@@ -561,6 +561,12 @@ padding_value={"ct": -1000, "label": 0}
 - `NumpyReader`：`.npy`
 - `DicomSeriesReader`：包含单个 DICOM series 的目录，依赖 SimpleITK
 
+reader 的数组轴顺序遵循实际读取后端。`NiftiReader` 返回 nibabel 的 NIfTI 数组
+顺序，通常是 `(X, Y, Z)`；`DicomSeriesReader` 返回
+`sitk.GetArrayFromImage(...)` 的 SimpleITK 数组顺序，即 `(Z, Y, X)`。当前
+reader 只返回数组，不返回 affine、spacing、origin 或 direction；如果空间信息很重要，
+应使用更底层的 I/O 函数。
+
 自定义格式可以实现 `ImageReader`：
 
 ```python
@@ -653,6 +659,10 @@ write_nifti(volume, affine, "outputs/scan-copy.nii.gz")
 NIfTI 读写基于 nibabel。`read_nifti` 返回 `(volume, affine)`，默认将 volume 读取为
 `float32`；写入时 affine 必须是 `4 x 4`。
 
+混用 DICOM 与 NIfTI 路径时需要显式确认轴顺序：`read_nifti` 返回 nibabel 的
+NIfTI 数组顺序；`read_dicom_series` 返回 SimpleITK image，而 `DicomSeriesReader`
+会用 `sitk.GetArrayFromImage` 将其物化为 `(Z, Y, X)` 的 NumPy 数组。
+
 ## Evaluation Metrics
 
 使用 SimpleITK、scikit-image、MedPy 和 SciPy 后端的指标前，需安装
@@ -662,7 +672,7 @@ NIfTI 读写基于 nibabel。`read_nifti` 返回 `(volume, affine)`，默认将 
 | --- | --- |
 | 分割与边界 | `dice`、`jaccard`/`iou`、`hd95`、`assd`、`sensitivity`、`specificity`、`precision`、`ravd` |
 | 图像相似性与误差 | `ssim`、`psnr`、`mae`、`mse`、`nrmse`、`nmi`、`gcc`、`ncc`、`gradient_mae` |
-| 形变场质量 | `negative_jacobian_percentage`、`deformation_smoothness`、`deformation_magnitude` |
+| 形变场质量 | `negative_jacobian_percentage_from_grid`、`negative_jacobian_percentage_from_displacement`、`deformation_smoothness`、`deformation_magnitude` |
 
 成对指标接收 NumPy 兼容的 prediction 和 target 数组。每个成对指标都支持可选
 布尔 `mask`，仅选中元素参与计算。同时保留 `label`、`data_range`、
@@ -686,8 +696,9 @@ structural_similarity = ssim(prediction_image, target_image, data_range=1.0, mas
 HD95/ASSD、RAVD、smoothness 和 magnitude 是误差或距离类指标，通常越小越好。
 
 形变场指标支持 2D/3D 及 component-first/component-last 布局。
-`negative_jacobian_percentage` 期望归一化坐标形变网格，返回行列式小于零的
-体素百分比。Smoothness 和 magnitude 返回形变场原始正则性统计量。
+`negative_jacobian_percentage_from_grid` 期望 `[-1, 1]` 范围内的归一化坐标网格。
+`negative_jacobian_percentage_from_displacement` 期望 displacement field，并计算
+`phi(x) = x + u(x)` 的 Jacobian。Smoothness 和 magnitude 返回形变场原始正则性统计量。
 
 ### 指标聚合
 
@@ -752,7 +763,7 @@ from medimageflow.metrics import aggregate_single_input_metrics
 
 deformation_summary = aggregate_single_input_metrics(
     deformation_fields,
-    ["negative_jacobian_percentage", "deformation_magnitude"],
+    ["negative_jacobian_percentage_from_displacement", "deformation_magnitude"],
 )
 ```
 

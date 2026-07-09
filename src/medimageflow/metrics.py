@@ -318,36 +318,92 @@ def _jacobian_determinant(deformation: ArrayLike) -> NDArray[np.float64]:
     return determinant0 - determinant1 + determinant2
 
 
-def negative_jacobian_percentage(
-    deformation: ArrayLike,
+def _coordinate_jacobian_determinant(field: NDArray[np.float64]) -> NDArray[np.float64]:
+    """Return forward-difference Jacobian determinants for a coordinate field."""
+    if field.ndim == 4:
+        dy = field[:, 1:, :-1, :] - field[:, :-1, :-1, :]
+        dx = field[:, :-1, 1:, :] - field[:, :-1, :-1, :]
+        return dx[..., 0] * dy[..., 1] - dx[..., 1] * dy[..., 0]
+
+    dy = field[:, 1:, :-1, :-1, :] - field[:, :-1, :-1, :-1, :]
+    dx = field[:, :-1, 1:, :-1, :] - field[:, :-1, :-1, :-1, :]
+    dz = field[:, :-1, :-1, 1:, :] - field[:, :-1, :-1, :-1, :]
+
+    determinant0 = dx[..., 0] * (dy[..., 1] * dz[..., 2] - dy[..., 2] * dz[..., 1])
+    determinant1 = dx[..., 1] * (dy[..., 0] * dz[..., 2] - dy[..., 2] * dz[..., 0])
+    determinant2 = dx[..., 2] * (dy[..., 0] * dz[..., 1] - dy[..., 1] * dz[..., 0])
+    return determinant0 - determinant1 + determinant2
+
+
+def _identity_coordinate_field(field: NDArray[np.float64]) -> NDArray[np.float64]:
+    """Return a voxel-coordinate identity field with x/y/z components."""
+    spatial_shape = field.shape[1:-1]
+    coordinate_axes = np.meshgrid(
+        *(np.arange(size, dtype=np.float64) for size in spatial_shape),
+        indexing="ij",
+    )
+    coordinates = coordinate_axes[::-1]
+    identity = np.stack(coordinates, axis=-1)
+    return np.broadcast_to(identity, field.shape)
+
+
+def _masked_jacobian_values(
+    field: NDArray[np.float64],
+    determinant: NDArray[np.float64],
+    mask: ArrayLike | None,
+) -> NDArray[np.float64]:
+    """Apply an optional spatial mask to forward-difference determinants."""
+    if mask is None:
+        return determinant
+
+    mask_array = np.asarray(mask, dtype=np.bool_)
+    spatial_shape = field.shape[:-1]
+    if mask_array.shape == spatial_shape:
+        interior = (slice(None),) + (slice(None, -1),) * (field.ndim - 2)
+        mask_array = mask_array[interior]
+    elif mask_array.shape != determinant.shape:
+        raise ValueError(
+            "mask must match the deformation spatial shape "
+            f"{spatial_shape} or determinant shape {determinant.shape}, "
+            f"got {mask_array.shape}"
+        )
+    if not np.any(mask_array):
+        raise ValueError("mask must contain at least one selected element")
+    return determinant[mask_array]
+
+
+def negative_jacobian_percentage_from_grid(
+    deformation_grid: ArrayLike,
     *,
     mask: ArrayLike | None = None,
 ) -> float:
-    """Return the percentage of voxels with a negative Jacobian determinant.
+    """Return the percentage of negative determinants in a normalized grid.
 
-    ``deformation`` may be a 2D or 3D field using component-last or
-    component-first layout. A mask may match either the original batch/spatial
-    shape or the forward-difference determinant shape.
+    ``deformation_grid`` is a 2D or 3D coordinate field in ``[-1, 1]`` using
+    component-last or component-first layout. A mask may match either the
+    original batch/spatial shape or the forward-difference determinant shape.
     """
-    field = _component_last_deformation(deformation)
+    field = _component_last_deformation(deformation_grid)
     determinant = _jacobian_determinant(field)
-    if mask is None:
-        selected = determinant
-    else:
-        mask_array = np.asarray(mask, dtype=np.bool_)
-        spatial_shape = field.shape[:-1]
-        if mask_array.shape == spatial_shape:
-            interior = (slice(None),) + (slice(None, -1),) * (field.ndim - 2)
-            mask_array = mask_array[interior]
-        elif mask_array.shape != determinant.shape:
-            raise ValueError(
-                "mask must match the deformation spatial shape "
-                f"{spatial_shape} or determinant shape {determinant.shape}, "
-                f"got {mask_array.shape}"
-            )
-        if not np.any(mask_array):
-            raise ValueError("mask must contain at least one selected element")
-        selected = determinant[mask_array]
+    selected = _masked_jacobian_values(field, determinant, mask)
+    return float(np.mean(selected < 0.0) * 100.0)
+
+
+def negative_jacobian_percentage_from_displacement(
+    displacement: ArrayLike,
+    *,
+    mask: ArrayLike | None = None,
+) -> float:
+    """Return the percentage of negative determinants for ``phi(x) = x + u(x)``.
+
+    ``displacement`` is a 2D or 3D displacement field in voxel units using
+    component-last or component-first layout. Components are ordered as
+    ``(x, y)`` or ``(x, y, z)``.
+    """
+    field = _component_last_deformation(displacement)
+    coordinate_field = _identity_coordinate_field(field) + field
+    determinant = _coordinate_jacobian_determinant(coordinate_field)
+    selected = _masked_jacobian_values(field, determinant, mask)
     return float(np.mean(selected < 0.0) * 100.0)
 
 
@@ -526,7 +582,10 @@ def mae(
 ) -> float:
     """Return mean absolute error, optionally over selected elements only."""
     prediction_array, target_array = _masked_arrays(prediction, target, mask)
-    return float(np.mean(np.abs(target_array - prediction_array)))
+    difference = np.asarray(target_array, dtype=np.float64) - np.asarray(
+        prediction_array, dtype=np.float64
+    )
+    return float(np.mean(np.abs(difference)))
 
 
 def mse(
@@ -598,7 +657,8 @@ _SINGLE_INPUT_METRIC_NAMES = frozenset(
     {
         "deformation_magnitude",
         "deformation_smoothness",
-        "negative_jacobian_percentage",
+        "negative_jacobian_percentage_from_displacement",
+        "negative_jacobian_percentage_from_grid",
     }
 )
 
@@ -938,7 +998,8 @@ __all__ = [
     "mae",
     "mse",
     "ncc",
-    "negative_jacobian_percentage",
+    "negative_jacobian_percentage_from_displacement",
+    "negative_jacobian_percentage_from_grid",
     "nmi",
     "nrmse",
     "precision",

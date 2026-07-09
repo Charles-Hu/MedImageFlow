@@ -1,6 +1,7 @@
 import numpy as np
+import pytest
 
-from medimageflow.transforms import Compose, NormalizeIntensity
+from medimageflow.transforms import Compose, MinMaxNormalize, NormalizeIntensity
 
 
 def test_normalize_intensity_preserves_zero_background() -> None:
@@ -16,3 +17,8 @@ def test_normalize_intensity_preserves_zero_background() -> None:
     assert result["image"][0] == 0
     np.testing.assert_allclose(result["image"][1:].mean(), 0.0, atol=1e-6)
     np.testing.assert_allclose(result["image"][1:].std(), 1.0, atol=1e-6)
+
+
+def test_min_max_normalize_rejects_invalid_fixed_bounds() -> None:
+    with pytest.raises(ValueError, match="maximum must be greater"):
+        MinMaxNormalize(minimum=100.0, maximum=0.0)
