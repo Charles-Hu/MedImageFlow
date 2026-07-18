@@ -33,6 +33,15 @@ imaging = [
 ]
 torch = ["torch>=2.1"]
 visualization = ["matplotlib>=3.7"]
+notebooks = [
+  "ipykernel>=6",
+  "jupyterlab>=4",
+  "nibabel>=5.2",
+  "SimpleITK>=2.3",
+  "pydicom>=2.4",
+  "torch>=2.1",
+  "matplotlib>=3.7",
+]
 dev = ["pytest>=8", "pytest-cov>=5", "ruff>=0.5", "mypy>=1.10,<2"]
 all = [
   "MedPy>=0.5",
